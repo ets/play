@@ -15,10 +15,13 @@ import org.jboss.netty.handler.stream.ChunkedFile;
 import org.jboss.netty.handler.stream.ChunkedInput;
 import org.jboss.netty.handler.stream.ChunkedStream;
 import org.jboss.netty.handler.stream.ChunkedWriteHandler;
+
 import play.Invoker;
 import play.Invoker.InvocationContext;
 import play.Logger;
 import play.Play;
+import play.data.parsing.DataParser;
+import play.data.parsing.DirectStreamingParser;
 import play.data.validation.Validation;
 import play.exceptions.PlayException;
 import play.exceptions.UnexpectedException;
@@ -563,10 +566,15 @@ public class PlayHandler extends SimpleChannelUpstreamHandler {
             }
 
         } else {
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            IOUtils.copy(new ChannelBufferInputStream(b), out);
-            byte[] n = out.toByteArray();
-            body = new ByteArrayInputStream(n);
+            DataParser parser = DataParser.parsers.get(contentType);
+            if(parser instanceof DirectStreamingParser && (nettyRequest.getMethod().equals(HttpMethod.POST) || nettyRequest.getMethod().equals(HttpMethod.PUT)) ){
+                body = new ChannelBufferInputStream(b);
+            }else{
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                IOUtils.copy(new ChannelBufferInputStream(b), out);
+                byte[] n = out.toByteArray();
+                body = new ByteArrayInputStream(n);
+            }
         }
 
         String host = nettyRequest.getHeader(HOST);
@@ -1080,7 +1088,7 @@ public class PlayHandler extends SimpleChannelUpstreamHandler {
         p.replace("encoder", "wsencoder", new WebSocketFrameEncoder());
     }
 
-    protected void adjustPipelineToHybi(ChannelHandlerContext ctx) {    	
+    protected void adjustPipelineToHybi(ChannelHandlerContext ctx) {        
         ChannelPipeline p = ctx.getChannel().getPipeline();
         p.remove("aggregator");
         p.replace("decoder", "wsdecoder", new Hybi10WebSocketFrameDecoder());
