@@ -6,7 +6,11 @@ import org.jboss.netty.channel.*;
 import org.jboss.netty.handler.codec.http.HttpChunk;
 import org.jboss.netty.handler.codec.http.HttpHeaders;
 import org.jboss.netty.handler.codec.http.HttpMessage;
+import org.jboss.netty.handler.codec.http.HttpMethod;
+
 import play.Play;
+import play.data.parsing.DataParser;
+import play.data.parsing.DirectStreamingParser;
 
 import java.io.*;
 import java.util.List;
@@ -33,11 +37,16 @@ public class StreamChunkAggregator extends SimpleChannelUpstreamHandler {
             ctx.sendUpstream(e);
             return;
         }
+        HttpMessage m = (HttpMessage) msg;
+        DataParser parser = DataParser.parsers.get(m.getHeaders(HttpHeaders.Names.CONTENT_TYPE));        
+        if(parser instanceof DirectStreamingParser){
+            ctx.sendUpstream(e);
+            return;
+        }
 
         HttpMessage currentMessage = this.currentMessage;
         File localFile = this.file;
-        if (currentMessage == null) {
-            HttpMessage m = (HttpMessage) msg;
+        if (currentMessage == null) {            
             if (m.isChunked()) {
                 final String localName = UUID.randomUUID().toString();
                 // A chunked message - remove 'Transfer-Encoding' header,
