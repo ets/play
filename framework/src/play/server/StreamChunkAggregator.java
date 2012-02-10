@@ -19,8 +19,6 @@ public class StreamChunkAggregator extends SimpleChannelUpstreamHandler {
     private final int maxContentLength;
     private volatile File file;
 
-    private final Boolean supportChunked = Boolean.valueOf(Play.configuration.getProperty("play.netty.supportChunkedRequests"));
-    
     /**
      * Creates a new instance.
      */
@@ -63,11 +61,7 @@ public class StreamChunkAggregator extends SimpleChannelUpstreamHandler {
             if (maxContentLength != -1 && (localFile.length() > (maxContentLength - chunk.getContent().readableBytes()))) {
                 currentMessage.setHeader(HttpHeaders.Names.WARNING, "play.netty.content.length.exceeded");
             } else {
-                if(supportChunked){
-                    IOUtils.copyLarge(new ChannelBufferInputStream(chunk.getContent()), this.out);
-                }else{
-                    currentMessage.setHeader(HttpHeaders.Names.WARNING, "play.netty.supportChunkedRequests.false");
-                }
+                IOUtils.copyLarge(new ChannelBufferInputStream(chunk.getContent()), this.out);
 
                 if (chunk.isLast()) {
                     this.out.flush();
