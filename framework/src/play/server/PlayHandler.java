@@ -568,7 +568,11 @@ public class PlayHandler extends SimpleChannelUpstreamHandler {
         } else {
             DataParser parser = DataParser.parsers.get(contentType);
             if(parser instanceof DirectStreamingParser && (nettyRequest.getMethod().equals(HttpMethod.POST) || nettyRequest.getMethod().equals(HttpMethod.PUT)) ){
-                body = new ChannelBufferInputStream(b);
+                if(b instanceof InputStreamChannelBuffer){
+                    body = ((InputStreamChannelBuffer)b).getInputStream();
+                }else{
+                    body = new ChannelBufferInputStream(b);    
+                }                
             }else{
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
                 IOUtils.copy(new ChannelBufferInputStream(b), out);
