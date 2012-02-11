@@ -3,6 +3,8 @@ package play.server;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import org.apache.commons.io.IOUtils;
 import org.jboss.netty.buffer.ChannelBufferInputStream;
@@ -64,20 +66,21 @@ public class StreamingChunkAggregator extends SimpleChannelUpstreamHandler {
                 if (!messageFired) {
                     messageFired = true;
                     currentMessage.setContent(new InputStreamChannelBuffer(inputStream));
-                    if(Logger.isDebugEnabled()) Logger.debug("Firing initial chunk of inputstream");
-                    Thread asyncMessageSender = new Thread() {
+                    if(Logger.isDebugEnabled()) Logger.debug("Firing initial chunk of inputstream");                                        
+                    Executors.newSingleThreadExecutor().submit(new Runnable() {
                         public void run() {
                             Channels.fireMessageReceived(ctx, currentMessage, e.getRemoteAddress());
                         }
-                    };
-                    asyncMessageSender.start();                                        
+                    });          
+                    
                 }                
             }
             if (chunk.isLast()) {
                 if(Logger.isDebugEnabled()) Logger.debug("Added final inputstream");
                 inputStream.lastInputStreamAdded();
                 this.inputStream = null;
-                this.currentMessage = null;                
+                this.currentMessage = null;    
+                this.messageFired = false;
             }            
         }
 

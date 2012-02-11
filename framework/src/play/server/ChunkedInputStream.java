@@ -77,6 +77,12 @@ public class ChunkedInputStream extends InputStream {
         return currentInputStream;
     }    
     private final void advanceToNextInputStream() {
+        if(currentInputStream != null)
+            try {
+                currentInputStream.close();
+            } catch (IOException e) {
+                Logger.warn(e,"Unable to close inputstream.");
+            }
         currentInputStream = null;
     }    
     /**
