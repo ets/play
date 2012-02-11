@@ -29,14 +29,14 @@ public class StreamingChunkAggregator extends SimpleChannelUpstreamHandler {
     }
 
     @Override
-    public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) throws Exception {
+    public void messageReceived(final ChannelHandlerContext ctx, final MessageEvent e) throws Exception {
         Object msg = e.getMessage();
         if (!(msg instanceof HttpMessage) && !(msg instanceof HttpChunk)) {
             ctx.sendUpstream(e);
             return;
         }
 
-        HttpMessage currentMessage = this.currentMessage;
+        final HttpMessage currentMessage = this.currentMessage;
         if (currentMessage == null) {
             HttpMessage m = (HttpMessage) msg;
             if (m.isChunked()) { // A chunked message we can process                
@@ -65,7 +65,12 @@ public class StreamingChunkAggregator extends SimpleChannelUpstreamHandler {
                     messageFired = true;
                     currentMessage.setContent(new InputStreamChannelBuffer(inputStream));
                     if(Logger.isDebugEnabled()) Logger.debug("Firing initial chunk of inputstream");
-                    Channels.fireMessageReceived(ctx, currentMessage, e.getRemoteAddress());                    
+                    Thread asyncMessageSender = new Thread() {
+                        public void run() {
+                            Channels.fireMessageReceived(ctx, currentMessage, e.getRemoteAddress());
+                        }
+                    };
+                    asyncMessageSender.start();                                        
                 }                
             }
             if (chunk.isLast()) {
