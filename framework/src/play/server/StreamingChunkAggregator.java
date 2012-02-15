@@ -9,6 +9,7 @@ import java.util.concurrent.Future;
 import org.apache.commons.io.IOUtils;
 import org.jboss.netty.buffer.ChannelBufferInputStream;
 import org.jboss.netty.channel.ChannelHandlerContext;
+import org.jboss.netty.channel.ChannelStateEvent;
 import org.jboss.netty.channel.Channels;
 import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
@@ -85,5 +86,31 @@ public class StreamingChunkAggregator extends SimpleChannelUpstreamHandler {
         }
 
     }
+
+    @Override
+    public void channelDisconnected(ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
+        super.channelDisconnected(ctx, e);
+        killPending();
+    }
+
+    private void killPending() {
+        if(inputStream != null){
+            try {
+                this.inputStream.close();
+            } catch (IOException ioe) {
+                Logger.warn(ioe,"Unable to properly kill pending.");
+            }
+            this.inputStream = null;   
+        }        
+        this.currentMessage = null;    
+        this.messageFired = false;        
+    }
+
+    @Override
+    public void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
+        super.channelClosed(ctx, e);
+        killPending();
+    }
+    
 }
 
