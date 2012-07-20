@@ -228,6 +228,7 @@ public abstract class FunctionalTest extends BaseTest {
         request.path = path;
         request.querystring = queryString;
         request.body = new ByteArrayInputStream(body.getBytes());
+        if (savedCookies != null) request.cookies = savedCookies;
         return makeRequest(request);
     }
 
@@ -292,6 +293,10 @@ public abstract class FunctionalTest extends BaseTest {
                 // 0, they discard immediately.
                 if(e.getValue().maxAge == null || e.getValue().maxAge > 0) {
                     savedCookies.put(e.getKey(), e.getValue());
+                } else {
+                    // cookies with maxAge zero still remove a previously existing cookie,
+                    // like PLAY_FLASH.
+                    savedCookies.remove(e.getKey());
                 }
             }
             response.out.flush();
@@ -408,8 +413,10 @@ public abstract class FunctionalTest extends BaseTest {
      * @param response server response
      */
     public static void assertContentType(String contentType, Response response) {
-        assertTrue("Response contentType unmatched : '" + contentType + "' !~ '" + response.contentType + "'",
-                response.contentType.startsWith(contentType));
+        String responseContentType = response.contentType;
+        assertNotNull("Response contentType missing", responseContentType);
+        assertTrue("Response contentType unmatched : '" + contentType + "' !~ '" + responseContentType + "'",
+                responseContentType.startsWith(contentType));
     }
 
     /**

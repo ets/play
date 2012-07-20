@@ -33,6 +33,7 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.*;
 import java.net.URI;
 import java.net.URLDecoder;
+import java.net.URISyntaxException;
 import java.text.ParseException;
 import java.util.*;
 
@@ -67,7 +68,7 @@ public class ServletWrapper extends HttpServlet implements ServletContextListene
         ClassLoader oldClassLoader = Thread.currentThread().getContextClassLoader();
         String appDir = e.getServletContext().getRealPath("/WEB-INF/application");
         File root = new File(appDir);
-        final String playId = e.getServletContext().getInitParameter("play.id");
+        final String playId = System.getProperty("play.id", e.getServletContext().getInitParameter("play.id"));
         if (StringUtils.isEmpty(playId)) {
             throw new UnexpectedException("Please define a play.id parameter in your web.xml file. Without that parameter, play! cannot start your application. Please add a context-param into the WEB-INF/web.xml file.");
         }
@@ -153,6 +154,9 @@ public class ServletWrapper extends HttpServlet implements ServletContextListene
             }
             serveStatic(httpServletResponse, httpServletRequest, e);
             return;
+        } catch(URISyntaxException e) {
+			 serve404(httpServletRequest, httpServletResponse, new NotFound(e.toString()));
+	         return;
         } catch (Throwable e) {
             throw new ServletException(e);
         } finally {
@@ -237,8 +241,8 @@ public class ServletWrapper extends HttpServlet implements ServletContextListene
     }
 
     public static Request parseRequest(HttpServletRequest httpServletRequest) throws Exception {
-
-        URI uri = new URI(httpServletRequest.getRequestURI());
+	 	
+		URI uri = new URI(httpServletRequest.getRequestURI());
         String method = httpServletRequest.getMethod().intern();
         String path = uri.getPath();
         String querystring = httpServletRequest.getQueryString() == null ? "" : httpServletRequest.getQueryString();

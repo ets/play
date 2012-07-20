@@ -40,15 +40,26 @@ public class DBPlugin extends PlayPlugin {
     public boolean rawInvocation(Request request, Response response) throws Exception {
         if (Play.mode.isDev() && request.path.equals("/@db")) {
             response.status = Http.StatusCode.MOVED;
+            String serverOptions[] = new String[] { };
 
             // For H2 embeded database, we'll also start the Web console
             if (h2Server != null) {
                 h2Server.stop();
             }
-            h2Server = org.h2.tools.Server.createWebServer();
+
+            String domain = request.domain;
+            if (domain.equals("")) {
+                domain = "localhost";
+            }
+
+            if (!domain.equals("localhost")) {
+                serverOptions = new String[] {"-webAllowOthers"};
+            }
+            
+            h2Server = org.h2.tools.Server.createWebServer(serverOptions);
             h2Server.start();
 
-            response.setHeader("Location", "http://localhost:8082/");
+            response.setHeader("Location", "http://" + domain + ":8082/");
             return true;
         }
         return false;
@@ -65,10 +76,18 @@ public class DBPlugin extends PlayPlugin {
                     DB.destroy();
                 }
 
-                if (p.getProperty("db", "").startsWith("java:")) {
+	        boolean isJndiDatasource = false;
+                String datasourceName = p.getProperty("db", "");
+                // Identify datasource JNDI lookup name by 'jndi:' or 'java:' prefix 
+                if (datasourceName.startsWith("jndi:")) {
+                    datasourceName = datasourceName.substring("jndi:".length());
+                    isJndiDatasource = true;
+                }
+
+                if (isJndiDatasource || datasourceName.startsWith("java:")) {
 
                     Context ctx = new InitialContext();
-                    DB.datasource = (DataSource) ctx.lookup(p.getProperty("db"));
+                    DB.datasource = (DataSource) ctx.lookup(datasourceName);
 
                 } else {
 
@@ -202,8 +221,10 @@ public class DBPlugin extends PlayPlugin {
             p.put("db.user", "sa");
             p.put("db.pass", "");
         }
-
-        if (p.getProperty("db", "").startsWith("java:") && p.getProperty("db.url") == null) {
+        boolean isJndiDatasource = false;
+        String datasourceName = p.getProperty("db", "");
+             
+        if ((isJndiDatasource || datasourceName.startsWith("java:")) && p.getProperty("db.url") == null) {
             if (DB.datasource == null) {
                 return true;
             }

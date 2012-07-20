@@ -1,14 +1,14 @@
-    package play.server;
-
-import static org.jboss.netty.channel.Channels.pipeline;
+package play.server;
 
 import org.jboss.netty.channel.ChannelPipeline;
 import org.jboss.netty.channel.ChannelPipelineFactory;
-import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
+import org.jboss.netty.handler.codec.http.HttpChunkAggregator;
 import org.jboss.netty.handler.codec.http.HttpRequestDecoder;
 import org.jboss.netty.handler.codec.http.HttpResponseEncoder;
 
 import play.Play;
+
+import static org.jboss.netty.channel.Channels.pipeline;
 
 public class HttpServerPipelineFactory implements ChannelPipelineFactory {
 
