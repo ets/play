@@ -262,10 +262,14 @@ public class ChunkedInputStream extends InputStream {
     public int available() throws IOException {
         if (closed)
             throw new IOException("InputStream closed");
-        InputStream in = getCurrentInputStream();
+        InputStream in = this.getCurrentInputStream();
         if (in == null)
             return 0;
-        return in.available();
+        int avail = in.available(); 
+        for(InputStream is:this.inputStreamQueue){
+            avail += is.available();
+        }        
+        return avail; 
     }
     /**
      * Closes this input stream and releases any system resources associated with the stream.
