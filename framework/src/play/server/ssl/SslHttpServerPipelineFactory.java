@@ -12,6 +12,7 @@ import org.jboss.netty.handler.stream.ChunkedWriteHandler;
 import play.Play;
 import play.server.FlashPolicyHandler;
 import play.server.StreamChunkAggregator;
+import play.server.StreamingChunkAggregator;
 
 import static org.jboss.netty.channel.Channels.pipeline;
 
@@ -22,6 +23,7 @@ public class SslHttpServerPipelineFactory implements ChannelPipelineFactory {
 
         Integer max = Integer.valueOf(Play.configuration.getProperty("play.netty.maxContentLength", "-1"));
         String mode = Play.configuration.getProperty("play.netty.clientAuth", "none");
+        Boolean bufferedAggregator = Boolean.parseBoolean(Play.configuration.getProperty("play.netty.bufferChunkedRequests","true"));
 
         ChannelPipeline pipeline = pipeline();
 
@@ -40,7 +42,7 @@ public class SslHttpServerPipelineFactory implements ChannelPipelineFactory {
         pipeline.addLast("flashPolicy", new FlashPolicyHandler());
         pipeline.addLast("ssl", new SslHandler(engine));
         pipeline.addLast("decoder", new HttpRequestDecoder());
-        pipeline.addLast("aggregator", new StreamChunkAggregator(max));
+        pipeline.addLast("aggregator", bufferedAggregator ? new StreamChunkAggregator(max) : new StreamingChunkAggregator());
         pipeline.addLast("encoder", new HttpResponseEncoder());
         pipeline.addLast("chunkedWriter", new ChunkedWriteHandler());
 
