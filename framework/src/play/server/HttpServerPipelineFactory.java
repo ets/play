@@ -18,21 +18,21 @@ public class HttpServerPipelineFactory implements ChannelPipelineFactory {
 
         Integer max = Integer.valueOf(Play.configuration.getProperty("play.netty.maxContentLength", "-1"));
         Boolean bufferedAggregator = Boolean.parseBoolean(Play.configuration.getProperty("play.netty.bufferChunkedRequests","true"));
-        Boolean requestDecompression = Boolean.parseBoolean(Play.configuration.getProperty("play.netty.requestDecompression","true"));
+        Boolean requestDecompression = Boolean.parseBoolean(Play.configuration.getProperty("play.netty.requestDecompression","false"));
         Boolean responseCompression = Boolean.parseBoolean(Play.configuration.getProperty("play.netty.responseCompression","false"));
            
         ChannelPipeline pipeline = pipeline();
         PlayHandler playHandler = new PlayHandler();
-        
-        if(requestDecompression) pipeline.addLast("decompressor", new HttpContentDecompressor());
-        pipeline.addLast("flashPolicy", new FlashPolicyHandler()); 
+                
+        pipeline.addLast("flashPolicy", new FlashPolicyHandler());
+        if(requestDecompression) pipeline.addLast("inflater", new HttpContentDecompressor());
         pipeline.addLast("decoder", new HttpRequestDecoder());        
         pipeline.addLast("aggregator", bufferedAggregator ? new StreamChunkAggregator(max) : new StreamingChunkAggregator());
         
         pipeline.addLast("encoder", new HttpResponseEncoder());
-        pipeline.addLast("chunkedWriter", playHandler.chunkedWriteHandler);
-        pipeline.addLast("handler", playHandler);
-        if(responseCompression) pipeline.addLast("compressor", new HttpContentCompressor());
+        if(responseCompression) pipeline.addLast("deflater", new HttpContentCompressor());
+        pipeline.addLast("chunkedWriter", playHandler.chunkedWriteHandler);        
+        pipeline.addLast("handler", playHandler);        
 
         return pipeline;
     }
