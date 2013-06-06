@@ -1,5 +1,9 @@
 package play.server;
 
+import static org.jboss.netty.channel.Channels.succeededFuture;
+import static org.jboss.netty.channel.Channels.write;
+import static org.jboss.netty.handler.codec.http.HttpHeaders.is100ContinueExpected;
+
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.List;
@@ -7,7 +11,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import org.apache.commons.io.IOUtils;
+import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.buffer.ChannelBufferInputStream;
+import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.channel.ChannelStateEvent;
 import org.jboss.netty.channel.Channels;
@@ -16,6 +22,7 @@ import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
 import org.jboss.netty.handler.codec.http.HttpChunk;
 import org.jboss.netty.handler.codec.http.HttpHeaders;
 import org.jboss.netty.handler.codec.http.HttpMessage;
+import org.jboss.netty.util.CharsetUtil;
 
 import play.Logger;
 
@@ -24,6 +31,8 @@ public class StreamingChunkAggregator extends SimpleChannelUpstreamHandler {
     private volatile HttpMessage currentMessage;
     private volatile ChunkedInputStream inputStream;
     private volatile boolean messageFired = false;
+    
+    private static final ChannelBuffer CONTINUE = ChannelBuffers.copiedBuffer("HTTP/1.1 100 Continue\r\n\r\n", CharsetUtil.US_ASCII);
     
     /**
      * Creates a new instance.
@@ -42,6 +51,11 @@ public class StreamingChunkAggregator extends SimpleChannelUpstreamHandler {
         final HttpMessage currentMessage = this.currentMessage;
         if (currentMessage == null) {
             HttpMessage m = (HttpMessage) msg;
+            
+            if (is100ContinueExpected(m)) {
+                write(ctx, succeededFuture(ctx.getChannel()), CONTINUE.duplicate());
+            }
+            
             if (m.isChunked()) { // A chunked message we can process                
                 // A chunked message - remove 'Transfer-Encoding' header,
                 // initialize the cumulative buffer, and wait for incoming chunks.
