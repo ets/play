@@ -1,16 +1,29 @@
 package play.server;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.OutputStream;
+import java.util.List;
+import java.util.UUID;
+
+import static org.jboss.netty.channel.Channels.*;
+import static org.jboss.netty.handler.codec.http.HttpHeaders.*;
+
+
 import org.apache.commons.io.IOUtils;
+import org.jboss.netty.buffer.ChannelBuffer;
+import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.buffer.ChannelBufferInputStream;
-import org.jboss.netty.channel.*;
+import org.jboss.netty.channel.ChannelHandlerContext;
+import org.jboss.netty.channel.Channels;
+import org.jboss.netty.channel.MessageEvent;
+import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
 import org.jboss.netty.handler.codec.http.HttpChunk;
 import org.jboss.netty.handler.codec.http.HttpHeaders;
 import org.jboss.netty.handler.codec.http.HttpMessage;
-import play.Play;
+import  org.jboss.netty.util.CharsetUtil;
 
-import java.io.*;
-import java.util.List;
-import java.util.UUID;
+import play.Play;
 
 public class StreamChunkAggregator extends SimpleChannelUpstreamHandler {
 
@@ -19,6 +32,8 @@ public class StreamChunkAggregator extends SimpleChannelUpstreamHandler {
     private final int maxContentLength;
     private volatile File file;
 
+    private static final ChannelBuffer CONTINUE = ChannelBuffers.copiedBuffer("HTTP/1.1 100 Continue\r\n\r\n", CharsetUtil.US_ASCII);
+    
     /**
      * Creates a new instance.
      */
@@ -38,6 +53,11 @@ public class StreamChunkAggregator extends SimpleChannelUpstreamHandler {
         File localFile = this.file;
         if (currentMessage == null) {
             HttpMessage m = (HttpMessage) msg;
+            
+            if (is100ContinueExpected(m)) {
+                write(ctx, succeededFuture(ctx.getChannel()), CONTINUE.duplicate());
+            }
+            
             if (m.isChunked()) {
                 final String localName = UUID.randomUUID().toString();
                 // A chunked message - remove 'Transfer-Encoding' header,
