@@ -75,6 +75,9 @@ public class EhCacheImpl implements CacheImpl {
         Element e = cache.get(key);
         return (e == null) ? null : e.getValue();
     }
+    public Element getElement(String key) {
+        return cache.get(key);
+    }
 
     public Map<String, Object> get(String[] keys) {
         Map<String, Object> result = new HashMap<String, Object>(keys.length);
@@ -96,7 +99,7 @@ public class EhCacheImpl implements CacheImpl {
         return newValue;
 
     }
-
+    
     public void replace(String key, Object value, int expiration) {
         if (cache.get(key) == null) {
             return;
@@ -149,6 +152,9 @@ public class EhCacheImpl implements CacheImpl {
         Element element = new Element(key, value);
         element.setTimeToLive(expiration);
         cache.put(element);
+    }
+    public void set(Element e){
+        cache.put(e);
     }
 
     public void stop() {

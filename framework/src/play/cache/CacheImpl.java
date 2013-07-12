@@ -28,7 +28,7 @@ public interface CacheImpl {
     public long incr(String key, int by);
 
     public long decr(String key, int by);
-
+        
     public void clear();
 
     public void delete(String key);
