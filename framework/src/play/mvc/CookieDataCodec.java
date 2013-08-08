@@ -15,7 +15,7 @@ public class CookieDataCodec {
      * @throws UnsupportedEncodingException
      */
     public static void decode(Map<String, String> map, String data) throws UnsupportedEncodingException {
-        String[] keyValues = data.split("&");
+        String[] keyValues = URLDecoder.decode(data, "utf-8").split("&");
         for (String keyValue : keyValues) {
             String[] splitted = keyValue.split("=", 2);
             if (splitted.length == 2) {
@@ -41,7 +41,7 @@ public class CookieDataCodec {
                 separator = "&";
             }
         }
-        return data.toString();
+        return URLEncoder.encode(data.toString(), "utf-8");
     }
 
     /**
