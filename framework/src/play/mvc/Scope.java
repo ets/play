@@ -30,6 +30,7 @@ public class Scope {
     public static final String COOKIE_PREFIX = Play.configuration.getProperty("application.session.cookie", "PLAY");
     public static final boolean COOKIE_SECURE = Play.configuration.getProperty("application.session.secure", "false").toLowerCase().equals("true");
     public static final String COOKIE_EXPIRE = Play.configuration.getProperty("application.session.maxAge");
+    public static final String COOKIE_BY_HEADER_NAME = "Authentication-Token";
     public static final boolean SESSION_HTTPONLY = Play.configuration.getProperty("application.session.httpOnly", "false").toLowerCase().equals("true");
     public static final boolean SESSION_SEND_ONLY_IF_CHANGED = Play.configuration.getProperty("application.session.sendOnlyIfChanged", "false").toLowerCase().equals("true");
 
@@ -159,17 +160,26 @@ public class Scope {
 
         static Session restore() {
             try {
-                Session session = new Session();
-                Http.Cookie cookie = Http.Request.current().cookies.get(COOKIE_PREFIX + "_SESSION");
+                Session session = new Session();                
+                String sessionValue = null;
+                
+                if(Play.started ){
+                    Http.Cookie cookie = Http.Request.current().cookies.get(COOKIE_PREFIX + "_SESSION");
+                    if (cookie != null && cookie.value != null && !cookie.value.trim().equals("")) {
+                        sessionValue = cookie.value;
+                    }else if(Http.Request.current().headers.containsKey(COOKIE_BY_HEADER_NAME)){
+                        sessionValue = Http.Request.current().headers.get(COOKIE_BY_HEADER_NAME).value();
+                    }
+                }
+                
 				final int duration = Time.parseDuration(COOKIE_EXPIRE) ;
 				final long expiration = (duration * 1000l);
 
-                if (cookie != null && Play.started && cookie.value != null && !cookie.value.trim().equals("")) {
-                    String value = cookie.value;
-				 	int firstDashIndex = value.indexOf("-");
+                if (sessionValue != null ) {
+				 	int firstDashIndex = sessionValue.indexOf("-");
 				    if(firstDashIndex > -1) {
-                    	String sign = value.substring(0, firstDashIndex);
-                    	String data = value.substring(firstDashIndex + 1);
+                    	String sign = sessionValue.substring(0, firstDashIndex);
+                    	String data = sessionValue.substring(firstDashIndex + 1);
                     	if (CookieDataCodec.safeEquals(sign, Crypto.sign(data, Play.secretKey.getBytes()))) {
                             CookieDataCodec.decode(session.data, data);
                     	}
@@ -244,17 +254,18 @@ public class Scope {
             if (isEmpty()) {
                 // The session is empty: delete the cookie
                 if(Http.Request.current().cookies.containsKey(COOKIE_PREFIX + "_SESSION") || !SESSION_SEND_ONLY_IF_CHANGED) {
-                    Http.Response.current().setCookie(COOKIE_PREFIX + "_SESSION", "", null, "/", 0, COOKIE_SECURE, SESSION_HTTPONLY);
+                    Http.Response.current().setCookie(COOKIE_PREFIX + "_SESSION", "", null, "/", 0, COOKIE_SECURE, SESSION_HTTPONLY);                    
                 }
                 return;
             }
             try {
                 String sessionData = CookieDataCodec.encode(data);
                 String sign = Crypto.sign(sessionData, Play.secretKey.getBytes());
+                String signAndData = sign + "-" + sessionData;
                 if (COOKIE_EXPIRE == null) {
-                    Http.Response.current().setCookie(COOKIE_PREFIX + "_SESSION", sign + "-" + sessionData, null, "/", null, COOKIE_SECURE, SESSION_HTTPONLY);
+                    Http.Response.current().setCookie(COOKIE_PREFIX + "_SESSION", signAndData, null, "/", null, COOKIE_SECURE, SESSION_HTTPONLY);
                 } else {
-                    Http.Response.current().setCookie(COOKIE_PREFIX + "_SESSION", sign + "-" + sessionData, null, "/", Time.parseDuration(COOKIE_EXPIRE), COOKIE_SECURE, SESSION_HTTPONLY);
+                    Http.Response.current().setCookie(COOKIE_PREFIX + "_SESSION", signAndData, null, "/", Time.parseDuration(COOKIE_EXPIRE), COOKIE_SECURE, SESSION_HTTPONLY);
                 }
             } catch (Exception e) {
                 throw new UnexpectedException("Session serializationProblem", e);
