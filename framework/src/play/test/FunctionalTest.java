@@ -184,7 +184,7 @@ public abstract class FunctionalTest extends BaseTest {
             parts.add(filePart);
         }
 
-        MultipartRequestEntity requestEntity = new MultipartRequestEntity(parts.toArray(new Part[]{}), null); 
+        MultipartRequestEntity requestEntity = new MultipartRequestEntity(parts.toArray(new Part[]{}), new FluentCaseInsensitiveStringsMap()); 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try {
             requestEntity.writeRequest(baos);
