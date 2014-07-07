@@ -25,6 +25,7 @@ import play.mvc.Http.Request;
 import play.mvc.Http.Response;
 import play.mvc.Scope.RenderArgs;
 
+import com.ning.http.client.FluentCaseInsensitiveStringsMap;
 import com.ning.http.multipart.FilePart;
 import com.ning.http.multipart.MultipartRequestEntity;
 import com.ning.http.multipart.Part;
