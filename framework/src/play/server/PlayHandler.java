@@ -569,7 +569,11 @@ public class PlayHandler extends SimpleChannelUpstreamHandler {
                 }                
             }else{
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
-                IOUtils.copy(new ChannelBufferInputStream(b), out);
+                if(b instanceof InputStreamChannelBuffer){
+                    IOUtils.copy(((InputStreamChannelBuffer)b).getInputStream(), out);
+                }else{
+                    IOUtils.copy(new ChannelBufferInputStream(b), out);    
+                }                
                 byte[] n = out.toByteArray();
                 body = new ByteArrayInputStream(n);
             }
