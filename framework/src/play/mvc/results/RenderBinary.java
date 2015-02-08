@@ -139,8 +139,9 @@ public class RenderBinary extends Result {
                         response.setHeader("Content-Disposition", String.format(contentDisposition, dispositionType, name));
                     } else {
                         final String encoding = getEncoding();
-                        String contentDisposition = "%1$s; filename*="+encoding+"''%2$s; filename=\"%2$s\"";
-                        response.setHeader("Content-Disposition", String.format(contentDisposition, dispositionType, encoder.encode(name, encoding)));
+                        String contentDisposition = "%1$s; filename=\"%2$s\" filename*="+encoding+"''%2$s;";
+                        //URLEncoder encodes for HTML Forms - so spaces are encoded as pluses ... not desired for the header
+                        response.setHeader("Content-Disposition", String.format(contentDisposition, dispositionType, encoder.encode(name, encoding).replaceAll("\\+","%20") ));
                     }
                 }
             }
