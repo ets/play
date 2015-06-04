@@ -6,6 +6,7 @@ import fileinput
 import getopt
 import shutil
 import zipfile
+import subprocess
 
 def playVersion(play_env):
     play_version_file = os.path.join(play_env["basedir"], 'framework', 'src', 'play', 'version')
@@ -44,6 +45,14 @@ def isParentOf(path1, path2):
         return re.match(ptn, relpath) != None
     except:
         return False
+
+def isExcluded(path, exclusion_list = None):
+    if exclusion_list is None:
+        return False
+    for exclusion in exclusion_list:
+        if isParentOf(exclusion, path):
+            return True
+    return False
 
 def getWithModules(args, env):
     withModules = []
@@ -91,8 +100,10 @@ def package_as_war(app, env, war_path, war_zip_path, war_exclusion_list = None):
         print "~"
         sys.exit(-1)
 
-    if isParentOf(app.path, war_path):
+    if isParentOf(app.path, war_path) and not isExcluded(war_path, war_exclusion_list):
         print "~ Oops. Please specify a destination directory outside of the application"
+        print "~ or exclude war destination directory using the --exclude option and ':'-separator "
+        print "~ (eg: --exclude .svn:target:logs:tmp)."
         print "~"
         sys.exit(-1)
 
@@ -229,3 +240,16 @@ def copy_directory(source, target, exclude = None):
 
 def isTestFrameworkId( framework_id ):
     return (framework_id == 'test' or (framework_id.startswith('test-') and framework_id.__len__() >= 6 ))
+
+def getJavaVersion():
+    sp = subprocess.Popen(["java", "-version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    javaVersion = sp.communicate()
+    javaVersion = str(javaVersion)
+    
+    result = re.search('version "([a-zA-Z0-9\.\-_]{1,})"', javaVersion)
+    
+    if result:
+        return result.group(1)
+    else:
+        print "Unable to retrieve java version from " + javaVersion
+        return ""

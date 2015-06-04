@@ -1,5 +1,6 @@
 package play.server;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 import play.Invoker;
 import play.Invoker.InvocationContext;
@@ -32,10 +33,11 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.*;
 import java.net.URI;
-import java.net.URLDecoder;
 import java.net.URISyntaxException;
 import java.text.ParseException;
 import java.util.*;
+
+import static org.apache.commons.io.IOUtils.closeQuietly;
 
 /**
  * Servlet implementation.
@@ -193,11 +195,12 @@ public class ServletWrapper extends HttpServlet implements ServletContextListene
                 } else {
                     long last = file.lastModified();
                     String etag = "\"" + last + "-" + file.hashCode() + "\"";
-                    if (!isModified(etag, last, servletRequest)) {
+                    String lastDate = Utils.getHttpDateFormatter().format(new Date(last));
+                    if (!isModified(etag, lastDate, servletRequest)) {
                         servletResponse.setHeader("Etag", etag);
                         servletResponse.setStatus(304);
                     } else {
-                        servletResponse.setHeader("Last-Modified", Utils.getHttpDateFormatter().format(new Date(last)));
+                        servletResponse.setHeader("Last-Modified", lastDate);
                         servletResponse.setHeader("Cache-Control", "max-age=" + Play.configuration.getProperty("http.cacheControl", "3600"));
                         servletResponse.setHeader("Etag", etag);
                         copyStream(servletResponse, file.inputstream());
@@ -207,7 +210,7 @@ public class ServletWrapper extends HttpServlet implements ServletContextListene
         }
     }
 
-    public static boolean isModified(String etag, long last,
+    public static boolean isModified(String etag, String lastDate,
             HttpServletRequest request) {
         // See section 14.26 in rfc 2616 http://www.faqs.org/rfcs/rfc2616.html
         String browserEtag = request.getHeader(IF_NONE_MATCH);
@@ -218,22 +221,23 @@ public class ServletWrapper extends HttpServlet implements ServletContextListene
                 return true;
             }
             if (dateString != null) {
-                return !isValidTimeStamp(last, dateString);
+                return !isValidTimeStamp(lastDate, dateString);
             }
             return false;
         } else {
             if (dateString != null) {
-                return !isValidTimeStamp(last, dateString);
+                return !isValidTimeStamp(lastDate, dateString);
             } else {
                 return true;
             }
         }
     }
 
-    private static boolean isValidTimeStamp(long last, String dateString) {
+    private static boolean isValidTimeStamp(String lastDateString, String dateString) {
         try {
             long browserDate = Utils.getHttpDateFormatter().parse(dateString).getTime();
-            return browserDate >= last;
+            long lastDate = Utils.getHttpDateFormatter().parse(lastDateString).getTime();
+            return browserDate >= lastDate;
         } catch (ParseException e) {
             Logger.error("Can't parse date", e);
             return false;
@@ -502,15 +506,16 @@ public class ServletWrapper extends HttpServlet implements ServletContextListene
 
     }
 
-    private void copyStream(HttpServletResponse servletResponse, InputStream is) throws IOException {
-        OutputStream os = servletResponse.getOutputStream();
-        byte[] buffer = new byte[8096];
-        int read = 0;
-        while ((read = is.read(buffer)) > 0) {
-            os.write(buffer, 0, read);
+    private void copyStream(HttpServletResponse servletResponse, InputStream is) throws IOException {        
+        if (servletResponse != null && is != null) {
+            try {
+                OutputStream os = servletResponse.getOutputStream();
+                IOUtils.copyLarge(is, os);
+                os.flush();
+            } finally {
+                closeQuietly(is);
+            }
         }
-        os.flush();
-        is.close();
     }
 
     public class ServletInvocation extends Invoker.DirectInvocation {
@@ -571,3 +576,4 @@ public class ServletWrapper extends HttpServlet implements ServletContextListene
         }
     }
 }
+

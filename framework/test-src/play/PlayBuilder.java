@@ -3,11 +3,15 @@ package play;
 
 import play.classloading.ApplicationClasses;
 import play.classloading.ApplicationClassloader;
+import play.mvc.Http.Request;
+import play.mvc.Http.Response;
+import play.mvc.Scope.RenderArgs;
 import play.vfs.VirtualFile;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.Properties;
 
@@ -30,6 +34,7 @@ public class PlayBuilder {
     @SuppressWarnings({"deprecation"})
     public void build(){
         
+        Play.version = "localbuild";
         Play.configuration = configuration;
         Play.classes = new ApplicationClasses();
         Play.javaPath = new ArrayList<VirtualFile>();
@@ -37,5 +42,27 @@ public class PlayBuilder {
         Play.classloader = new ApplicationClassloader();
         Play.plugins = Collections.unmodifiableList( new ArrayList<PlayPlugin>());
 
+    }
+    
+    public void initMvcObject(){
+        if (Request.current() == null) {
+            Request request = Request
+                    .createRequest(null, "GET", "/", "", null, null, null,
+                            null, false, 80, "localhost", false, null, null);
+            request.body = new ByteArrayInputStream(new byte[0]);
+            Request.current.set(request);
+        }
+
+        if (Response.current() == null) {
+            Response response = new Response();
+            response.out = new ByteArrayOutputStream();
+            response.direct = null;
+            Response.current.set(response);
+        }
+
+        if (RenderArgs.current() == null) {
+            RenderArgs renderArgs = new RenderArgs();
+            RenderArgs.current.set(renderArgs);
+        }
     }
 }

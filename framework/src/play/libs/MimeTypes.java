@@ -71,14 +71,14 @@ public class MimeTypes {
      * @return the content-type deduced from the file extension.
      */
     public static String getContentType(String filename, String defaultContentType){
-    	String contentType = getMimeType(filename, null);
-    	if (contentType == null){
-    		contentType =  defaultContentType;
-    	}
-    	if (contentType != null && contentType.startsWith("text/")){
-    		return contentType + "; charset=" + getCurrentCharset();
-    	}
-    	return contentType;
+        String contentType = getMimeType(filename, null);
+        if (contentType == null){
+            contentType =  defaultContentType;
+        }
+        if (contentType != null && contentType.startsWith("text/")){
+            return contentType + "; charset=" + getCurrentCharset();
+        }
+        return contentType;
     }
 
     /**
@@ -98,12 +98,14 @@ public class MimeTypes {
     private static String getCurrentCharset() {
         String charset;
         Http.Response currentResponse = Http.Response.current();
+
         if (currentResponse != null) {
             charset = currentResponse.encoding;
         }
         else {
             charset = Play.defaultWebEncoding;
         }
+
         return charset;
     }
 

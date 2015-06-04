@@ -1,19 +1,24 @@
 package play.db.jpa;
 
+import java.lang.reflect.Field;
+import java.lang.reflect.ParameterizedType;
+import java.util.*;
+
+import javax.persistence.*;
+
+import org.apache.commons.lang.StringUtils;
+
 import play.Play;
 import play.data.binding.BeanWrapper;
 import play.data.binding.Binder;
+import play.data.binding.BindingAnnotations;
 import play.data.binding.ParamNode;
 import play.data.validation.Validation;
 import play.exceptions.UnexpectedException;
 import play.mvc.Scope.Params;
 
-import javax.persistence.*;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.ParameterizedType;
-import java.util.*;
 
 /**
  * A super class for JPA entities 
@@ -49,7 +54,9 @@ public class GenericModel extends JPABase {
      *
      *  public static <T extends JPABase> T edit(ParamNode rootParamNode, String name, Object o, Annotation[] annotations)
      *
-     * @return
+     * @see GenericModel#edit(ParamNode, String, Object, Annotation[])
+     * 
+     * @return the entity
      */
     @Deprecated
     public static <T extends JPABase> T edit(Object o, String name, Map<String, String[]> params, Annotation[] annotations) {
@@ -57,9 +64,14 @@ public class GenericModel extends JPABase {
         return (T)edit( rootParamNode, name, o, annotations);
     }
 
-    @SuppressWarnings("deprecation")
     public static <T extends JPABase> T edit(ParamNode rootParamNode, String name, Object o, Annotation[] annotations) {
-        ParamNode paramNode = rootParamNode.getChild(name, true);
+        return edit(JPA.DEFAULT, rootParamNode, name, o, annotations);
+    }
+
+    public static <T extends JPABase> T edit(String dbName, ParamNode rootParamNode, String name, Object o, Annotation[] annotations) {
+        // #1601 - If name is empty, we're dealing with "root" request parameters (without prefixes).
+        // Must not call rootParamNode.getChild in that case, as it returns null. Use rootParamNode itself instead.
+        ParamNode paramNode = StringUtils.isEmpty(name) ? rootParamNode : rootParamNode.getChild(name, true);
         // #1195 - Needs to keep track of whick keys we remove so that we can restore it before
         // returning from this method.
         List<ParamNode.RemovedNode> removedNodesList = new ArrayList<ParamNode.RemovedNode>();
@@ -67,7 +79,7 @@ public class GenericModel extends JPABase {
             BeanWrapper bw = new BeanWrapper(o.getClass());
             // Start with relations
             Set<Field> fields = new HashSet<Field>();
-            Class clazz = o.getClass();
+            Class<?> clazz = o.getClass();
             while (!clazz.equals(Object.class)) {
                 Collections.addAll(fields, clazz.getDeclaredFields());
                 clazz = clazz.getSuperclass();
@@ -76,13 +88,21 @@ public class GenericModel extends JPABase {
                 boolean isEntity = false;
                 String relation = null;
                 boolean multiple = false;
-                //
+                
+                // First try the field 
+                Annotation[] fieldAnnotations = field.getAnnotations();
+                // and check with the profiles annotations
+                final BindingAnnotations bindingAnnotations = new BindingAnnotations(fieldAnnotations, new BindingAnnotations(annotations).getProfiles());
+                if (bindingAnnotations.checkNoBinding()) {
+                    continue;
+                }
+                
                 if (field.isAnnotationPresent(OneToOne.class) || field.isAnnotationPresent(ManyToOne.class)) {
                     isEntity = true;
                     relation = field.getType().getName();
                 }
                 if (field.isAnnotationPresent(OneToMany.class) || field.isAnnotationPresent(ManyToMany.class)) {
-                    Class fieldType = (Class) ((ParameterizedType) field.getGenericType()).getActualTypeArguments()[0];
+                    Class<?> fieldType = (Class<?>) ((ParameterizedType) field.getGenericType()).getActualTypeArguments()[0];
                     isEntity = true;
                     relation = fieldType.getName();
                     multiple = true;
@@ -107,11 +127,11 @@ public class GenericModel extends JPABase {
                                 // Remove it to prevent us from finding it again later
                                 fieldParamNode.removeChild(keyName, removedNodesList);
                                 for (String _id : ids) {
-                                    if (_id.equals("")) {
+                                    if (_id == null || _id.equals("")) {
                                         continue;
                                     }
                                  
-                                    Query q = JPA.em().createQuery("from " + relation + " where " + keyName + " = ?1");
+                                    Query q = JPA.em(dbName).createQuery("from " + relation + " where " + keyName + " = ?1");
                                     q.setParameter(1, Binder.directBind(rootParamNode.getOriginalKey(), annotations,_id, Model.Manager.factoryFor((Class<Model>) Play.classloader.loadClass(relation)).keyType(), null));
                                     try {
                                         l.add(q.getSingleResult());
@@ -126,7 +146,7 @@ public class GenericModel extends JPABase {
                             String[] ids = fieldParamNode.getChild(keyName, true).getValues();
                             if (ids != null && ids.length > 0 && !ids[0].equals("")) {
 
-                                Query q = JPA.em().createQuery("from " + relation + " where " + keyName + " = ?1");
+                                Query q = JPA.em(dbName).createQuery("from " + relation + " where " + keyName + " = ?1");
                                 q.setParameter(1, Binder.directBind(rootParamNode.getOriginalKey(), annotations, ids[0], Model.Manager.factoryFor((Class<Model>) Play.classloader.loadClass(relation)).keyType(), null));
                                 try {
                                     Object to = q.getSingleResult();
@@ -155,7 +175,9 @@ public class GenericModel extends JPABase {
                     }
                 }
             }
-            ParamNode beanNode = rootParamNode.getChild(name, true);
+            // #1601 - If name is empty, we're dealing with "root" request parameters (without prefixes).
+            // Must not call rootParamNode.getChild in that case, as it returns null. Use rootParamNode itself instead.
+            ParamNode beanNode = StringUtils.isEmpty(name) ? rootParamNode : rootParamNode.getChild(name, true);
             Binder.bindBean(beanNode, o, annotations);
             return (T) o;
         } catch (Exception e) {
@@ -182,6 +204,12 @@ public class GenericModel extends JPABase {
         return (T) this;
     }
 
+    public <T extends GenericModel> T edit(String dbName, ParamNode rootParamNode, String name) {
+        edit(dbName, rootParamNode, name, this, null);
+        return (T) this;
+    }
+    
+    
     public boolean validateAndSave() {
         if (Validation.current().valid(this).ok) {
             save();
@@ -209,7 +237,7 @@ public class GenericModel extends JPABase {
      * store (ie insert) the entity.
      */
     public boolean create() {
-        if (!em().contains(this)) {
+        if (!em(JPA.getDBName(this.getClass())).contains(this)) {
             _save();
             return true;
         }
@@ -220,7 +248,7 @@ public class GenericModel extends JPABase {
      * Refresh the entity state.
      */
     public <T extends JPABase> T refresh() {
-        em().refresh(this);
+        em(JPA.getDBName(this.getClass())).refresh(this);
         return (T) this;
     }
 
@@ -228,7 +256,7 @@ public class GenericModel extends JPABase {
      * Merge this object to obtain a managed entity (usefull when the object comes from the Cache).
      */
     public <T extends JPABase> T merge() {
-        return (T) em().merge(this);
+        return (T) em(JPA.getDBName(this.getClass())).merge(this);
     }
 
     /**

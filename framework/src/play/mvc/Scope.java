@@ -1,10 +1,10 @@
 package play.mvc;
 
-import java.io.UnsupportedEncodingException;
 import java.lang.annotation.Annotation;
-import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -30,7 +30,6 @@ public class Scope {
     public static final String COOKIE_PREFIX = Play.configuration.getProperty("application.session.cookie", "PLAY");
     public static final boolean COOKIE_SECURE = Play.configuration.getProperty("application.session.secure", "false").toLowerCase().equals("true");
     public static final String COOKIE_EXPIRE = Play.configuration.getProperty("application.session.maxAge");
-    public static final String COOKIE_BY_HEADER_NAME = "Authentication-Token";
     public static final boolean SESSION_HTTPONLY = Play.configuration.getProperty("application.session.httpOnly", "false").toLowerCase().equals("true");
     public static final boolean SESSION_SEND_ONLY_IF_CHANGED = Play.configuration.getProperty("application.session.sendOnlyIfChanged", "false").toLowerCase().equals("true");
 
@@ -42,7 +41,7 @@ public class Scope {
         Map<String, String> data = new HashMap<String, String>();
         Map<String, String> out = new HashMap<String, String>();
 
-        static Flash restore() {
+        public static Flash restore() {
             try {
                 Flash flash = new Flash();
                 Http.Cookie cookie = Http.Request.current().cookies.get(COOKIE_PREFIX + "_FLASH");
@@ -62,13 +61,13 @@ public class Scope {
             }
             if (out.isEmpty()) {
                 if(Http.Request.current().cookies.containsKey(COOKIE_PREFIX + "_FLASH") || !SESSION_SEND_ONLY_IF_CHANGED) {
-                    Http.Response.current().setCookie(COOKIE_PREFIX + "_FLASH", "", null, "/", 0, COOKIE_SECURE);
+                    Http.Response.current().setCookie(COOKIE_PREFIX + "_FLASH", "", null, "/", 0, COOKIE_SECURE, SESSION_HTTPONLY);
                 }
                 return;
             }
             try {
                 String flashData = CookieDataCodec.encode(out);
-                Http.Response.current().setCookie(COOKIE_PREFIX + "_FLASH", flashData, null, "/", null, COOKIE_SECURE);
+                Http.Response.current().setCookie(COOKIE_PREFIX + "_FLASH", flashData, null, "/", null, COOKIE_SECURE, SESSION_HTTPONLY);
             } catch (Exception e) {
                 throw new UnexpectedException("Flash serializationProblem", e);
             }
@@ -158,28 +157,19 @@ public class Scope {
         static final String ID_KEY = "___ID";
         static final String TS_KEY = "___TS";
 
-        static Session restore() {
+        public static Session restore() {
             try {
-                Session session = new Session();                
-                String sessionValue = null;
-                
-                if(Play.started ){
-                    Http.Cookie cookie = Http.Request.current().cookies.get(COOKIE_PREFIX + "_SESSION");
-                    if (cookie != null && cookie.value != null && !cookie.value.trim().equals("")) {
-                        sessionValue = cookie.value;
-                    }else if(Http.Request.current().headers.containsKey(COOKIE_BY_HEADER_NAME)){
-                        sessionValue = Http.Request.current().headers.get(COOKIE_BY_HEADER_NAME).value();
-                    }
-                }
-                
+                Session session = new Session();
+                Http.Cookie cookie = Http.Request.current().cookies.get(COOKIE_PREFIX + "_SESSION");
 				final int duration = Time.parseDuration(COOKIE_EXPIRE) ;
 				final long expiration = (duration * 1000l);
 
-                if (sessionValue != null ) {
-				 	int firstDashIndex = sessionValue.indexOf("-");
+                if (cookie != null && Play.started && cookie.value != null && !cookie.value.trim().equals("")) {
+                    String value = cookie.value;
+				 	int firstDashIndex = value.indexOf("-");
 				    if(firstDashIndex > -1) {
-                    	String sign = sessionValue.substring(0, firstDashIndex);
-                    	String data = sessionValue.substring(firstDashIndex + 1);
+                    	String sign = value.substring(0, firstDashIndex);
+                    	String data = value.substring(firstDashIndex + 1);
                     	if (CookieDataCodec.safeEquals(sign, Crypto.sign(data, Play.secretKey.getBytes()))) {
                             CookieDataCodec.decode(session.data, data);
                     	}
@@ -254,18 +244,17 @@ public class Scope {
             if (isEmpty()) {
                 // The session is empty: delete the cookie
                 if(Http.Request.current().cookies.containsKey(COOKIE_PREFIX + "_SESSION") || !SESSION_SEND_ONLY_IF_CHANGED) {
-                    Http.Response.current().setCookie(COOKIE_PREFIX + "_SESSION", "", null, "/", 0, COOKIE_SECURE, SESSION_HTTPONLY);                    
+                    Http.Response.current().setCookie(COOKIE_PREFIX + "_SESSION", "", null, "/", 0, COOKIE_SECURE, SESSION_HTTPONLY);
                 }
                 return;
             }
             try {
                 String sessionData = CookieDataCodec.encode(data);
                 String sign = Crypto.sign(sessionData, Play.secretKey.getBytes());
-                String signAndData = sign + "-" + sessionData;
                 if (COOKIE_EXPIRE == null) {
-                    Http.Response.current().setCookie(COOKIE_PREFIX + "_SESSION", signAndData, null, "/", null, COOKIE_SECURE, SESSION_HTTPONLY);
+                    Http.Response.current().setCookie(COOKIE_PREFIX + "_SESSION", sign + "-" + sessionData, null, "/", null, COOKIE_SECURE, SESSION_HTTPONLY);
                 } else {
-                    Http.Response.current().setCookie(COOKIE_PREFIX + "_SESSION", signAndData, null, "/", Time.parseDuration(COOKIE_EXPIRE), COOKIE_SECURE, SESSION_HTTPONLY);
+                    Http.Response.current().setCookie(COOKIE_PREFIX + "_SESSION", sign + "-" + sessionData, null, "/", Time.parseDuration(COOKIE_EXPIRE), COOKIE_SECURE, SESSION_HTTPONLY);
                 }
             } catch (Exception e) {
                 throw new UnexpectedException("Session serializationProblem", e);
@@ -347,7 +336,7 @@ public class Scope {
             return current.get();
         }
         boolean requestIsParsed;
-        public Map<String, String[]> data = new HashMap<String, String[]>();
+        public Map<String, String[]> data = new LinkedHashMap<String, String[]>();
 
         boolean rootParamsNodeIsGenerated = false;
         private RootParamNode rootParamNode = null;
@@ -368,23 +357,28 @@ public class Scope {
         public void checkAndParse() {
             if (!requestIsParsed) {
                 Http.Request request = Http.Request.current();
-                String contentType = request.contentType;
-                if (contentType != null) {
-                    DataParser dataParser = DataParser.parsers.get(contentType);
-                    if (dataParser != null) {
-                        _mergeWith(dataParser.parse(request.body));
-                    } else {
-                        if (contentType.startsWith("text/")) {
-                            _mergeWith(new TextParser().parse(request.body));
+                if (request == null) {
+                    throw new UnexpectedException("Current request undefined");
+                } else {
+                    String contentType = request.contentType;
+                    if (contentType != null) {
+                        DataParser dataParser = DataParser.parsers
+                                .get(contentType);
+                        if (dataParser != null) {
+                            _mergeWith(dataParser.parse(request.body));
+                        } else {
+                            if (contentType.startsWith("text/")) {
+                                _mergeWith(new TextParser().parse(request.body));
+                            }
                         }
                     }
+                    try {
+                        request.body.close();
+                    } catch (Exception e) {
+                        //
+                    }
+                    requestIsParsed = true;
                 }
-                try {
-                    request.body.close();
-                } catch (Exception e) {
-                    //
-                }
-                requestIsParsed = true;
             }
         }
 
@@ -405,6 +399,19 @@ public class Scope {
         public void remove(String key) {
             checkAndParse();
             data.remove(key);
+            // make sure rootsParamsNode is regenerated if needed
+            rootParamsNodeIsGenerated = false;
+        }
+        
+        public void removeStartWith(String prefix) {
+            checkAndParse();
+            Iterator<Map.Entry<String, String[]>> iterator = data.entrySet().iterator();
+            while (iterator.hasNext()) {
+                Map.Entry<String, String[]> entry = iterator.next();
+                if (entry.getKey().startsWith(prefix)) {
+                    iterator.remove();
+                }
+            }
             // make sure rootsParamsNode is regenerated if needed
             rootParamsNodeIsGenerated = false;
         }
@@ -459,7 +466,7 @@ public class Scope {
 
         public Map<String, String[]> sub(String prefix) {
             checkAndParse();
-            Map<String, String[]> result = new HashMap<String, String[]>();
+            Map<String, String[]> result = new LinkedHashMap<String, String[]>();
             for (String key : data.keySet()) {
                 if (key.startsWith(prefix + ".")) {
                     result.put(key.substring(prefix.length() + 1), data.get(key));

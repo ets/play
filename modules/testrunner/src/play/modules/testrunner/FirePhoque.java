@@ -3,6 +3,7 @@ package play.modules.testrunner;
 import com.gargoylesoftware.htmlunit.AlertHandler;
 import com.gargoylesoftware.htmlunit.BrowserVersion;
 import com.gargoylesoftware.htmlunit.ConfirmHandler;
+import com.gargoylesoftware.htmlunit.DefaultCssErrorHandler;
 import com.gargoylesoftware.htmlunit.DefaultPageCreator;
 import com.gargoylesoftware.htmlunit.Page;
 import com.gargoylesoftware.htmlunit.PromptHandler;
@@ -10,6 +11,7 @@ import com.gargoylesoftware.htmlunit.WebClient;
 import com.gargoylesoftware.htmlunit.WebResponse;
 import com.gargoylesoftware.htmlunit.WebWindow;
 import com.gargoylesoftware.htmlunit.javascript.host.Window;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
@@ -20,11 +22,17 @@ import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import net.sourceforge.htmlunit.corejs.javascript.Context;
+import net.sourceforge.htmlunit.corejs.javascript.ScriptRuntime;
+
+import static org.apache.commons.io.IOUtils.closeQuietly;
+
 public class FirePhoque {
 
     public static void main(String[] args) throws Exception {
 
-        Logger.getLogger("com.gargoylesoftware").setLevel(Level.OFF);
+        Logger logger = Logger.getLogger(DefaultCssErrorHandler.class.getName());
+        logger.setLevel(Level.OFF);
 
         String app = System.getProperty("application.url", "http://localhost:9000");
 
@@ -32,8 +40,9 @@ public class FirePhoque {
         File root = null;
         String selenium = null;
         List<String> tests = null;
+        BufferedReader in = null;
         try {
-            BufferedReader in = new BufferedReader(new InputStreamReader(new URL(app + "/@tests.list").openStream(), "utf-8"));
+            in = new BufferedReader(new InputStreamReader(new URL(app + "/@tests.list").openStream(), "utf-8"));
             String marker = in.readLine();
             if (!marker.equals("---")) {
                 throw new RuntimeException("Oops");
@@ -45,61 +54,72 @@ public class FirePhoque {
             while ((line = in.readLine()) != null) {
                 tests.add(line);
             }
-            in.close();
         } catch(Exception e) {
-            System.out.println("~ The application does not start. There are errors: " + e);
+            System.out.println("~ The application does not start. There are errors: " + e.getMessage());
+            e.printStackTrace();
             System.exit(-1);
+        } finally {
+            closeQuietly(in);
         }
 
         // Let's tweak WebClient
 
-        String headlessBrowser = System.getProperty("headlessBrowser", "INTERNET_EXPLORER_8");
+        String headlessBrowser = System.getProperty("headlessBrowser", "FIREFOX_24");
         BrowserVersion browserVersion;
-        if ("FIREFOX_3".equals(headlessBrowser)) {
-            browserVersion = BrowserVersion.FIREFOX_3;
-        } else if ("FIREFOX_3_6".equals(headlessBrowser)) {
-            browserVersion = BrowserVersion.FIREFOX_3_6;
-        } else if ("INTERNET_EXPLORER_6".equals(headlessBrowser)) {
-            browserVersion = BrowserVersion.INTERNET_EXPLORER_6;
-        } else if ("INTERNET_EXPLORER_7".equals(headlessBrowser)) {
-            browserVersion = BrowserVersion.INTERNET_EXPLORER_7;
-        } else {
+        if ("CHROME".equals(headlessBrowser)) {
+            browserVersion = BrowserVersion.CHROME;
+        } else if ("FIREFOX_17".equals(headlessBrowser)) {
+            browserVersion = BrowserVersion.FIREFOX_17;
+        } else if ("INTERNET_EXPLORER_8".equals(headlessBrowser)) {
             browserVersion = BrowserVersion.INTERNET_EXPLORER_8;
+        } else if ("INTERNET_EXPLORER_9".equals(headlessBrowser)) {
+            browserVersion = BrowserVersion.INTERNET_EXPLORER_9;
+        } else if ("INTERNET_EXPLORER_11".equals(headlessBrowser)) {
+            browserVersion = BrowserVersion.INTERNET_EXPLORER_11;
+        } else {
+            browserVersion = BrowserVersion.FIREFOX_24;
         }
 
         WebClient firephoque = new WebClient(browserVersion);
         firephoque.setPageCreator(new DefaultPageCreator() {
+	    /**
+	     * Generated Serial version UID
+	     */
+	    private static final long serialVersionUID = 6690993309672446834L;
 
-            @Override
+	    @Override
             public Page createPage(WebResponse wr, WebWindow ww) throws IOException {
                 Page page = createHtmlPage(wr, ww);
                 return page;
             }
         });
-        firephoque.setThrowExceptionOnFailingStatusCode(false);
+        
+        firephoque.getOptions().setThrowExceptionOnFailingStatusCode(false);
+        
         firephoque.setAlertHandler(new AlertHandler() {
-            public void handleAlert(Page page, String string) {
+            public void handleAlert(Page page, String message) {
                 try {
                     Window window = (Window)page.getEnclosingWindow().getScriptObject();
-                    window.custom_eval(
-                        "parent.selenium.browserbot.recordedAlerts.push('" + string.replace("'", "\\'")+ "');"
-                    );
+                    String script = "parent.selenium.browserbot.recordedAlerts.push('" + message.replace("'", "\\'")+ "');";
+                    window.execScript(script,  "JavaScript");
                 } catch(Exception e) {
                     e.printStackTrace();
                 }
             }
         });
         firephoque.setConfirmHandler(new ConfirmHandler() {
-            public boolean handleConfirm(Page page, String string) {
+            public boolean handleConfirm(Page page, String message) {
                 try {
                     Window window = (Window)page.getEnclosingWindow().getScriptObject();
-                    Object result = window.custom_eval(
-                        "parent.selenium.browserbot.recordedConfirmations.push('" + string.replace("'", "\\'")+ "');" +
-                        "var result = parent.selenium.browserbot.nextConfirmResult;" +
-                        "parent.selenium.browserbot.nextConfirmResult = true;" +
-                        "result"
-                    );
-                    return (Boolean)result;
+                    String script = "parent.selenium.browserbot.recordedConfirmations.push('" + message.replace("'", "\\'")+ "');" +
+                            "var result = parent.selenium.browserbot.nextConfirmResult;" +
+                            "parent.selenium.browserbot.nextConfirmResult = true;" +
+                            "result";
+                    
+                   Object result = ScriptRuntime.evalSpecial(Context.getCurrentContext(), window, window, new Object[] {script}, null, 0);
+                   // window.execScript(script,  "JavaScript");
+
+                   return (Boolean)result;
                 } catch(Exception e) {
                     e.printStackTrace();
                     return false;
@@ -107,16 +127,16 @@ public class FirePhoque {
             }
         });
         firephoque.setPromptHandler(new PromptHandler() {
-            public String handlePrompt(Page page, String string) {
+            public String handlePrompt(Page page, String message) {
                 try {
                     Window window = (Window)page.getEnclosingWindow().getScriptObject();
-                    Object result = window.custom_eval(
-                        "parent.selenium.browserbot.recordedPrompts.push('" + string.replace("'", "\\'")+ "');" +
-                        "var result = !parent.selenium.browserbot.nextConfirmResult ? null : parent.selenium.browserbot.nextPromptResult;" +
-                        "parent.selenium.browserbot.nextConfirmResult = true;" +
-                        "parent.selenium.browserbot.nextPromptResult = '';" +
-                        "result"
-                    );
+                    String script = "parent.selenium.browserbot.recordedPrompts.push('" + message.replace("'", "\\'")+ "');" +
+                            "var result = !parent.selenium.browserbot.nextConfirmResult ? null : parent.selenium.browserbot.nextPromptResult;" +
+                            "parent.selenium.browserbot.nextConfirmResult = true;" +
+                            "parent.selenium.browserbot.nextPromptResult = '';" +
+                            "result";
+                    Object result = ScriptRuntime.evalSpecial(Context.getCurrentContext(), window, window, new Object[] {script}, null, 0);
+                    //window.execScript(script,  "JavaScript");
                     return (String)result;
                 } catch(Exception e) {
                     e.printStackTrace();
@@ -124,8 +144,8 @@ public class FirePhoque {
                 }
             }
         });
-        firephoque.setThrowExceptionOnScriptError(false);
-
+        firephoque.getOptions().setThrowExceptionOnScriptError(false);
+        firephoque.getOptions().setPrintContentOnFailingStatusCode(false);
 
         // Go!
         int maxLength = 0;

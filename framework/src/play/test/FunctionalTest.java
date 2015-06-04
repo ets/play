@@ -16,8 +16,8 @@ import java.util.regex.Pattern;
 import java.net.MalformedURLException;
 
 import org.junit.Before;
-import play.Invoker.InvocationContext;
 
+import play.Invoker.InvocationContext;
 import play.classloading.enhancers.ControllersEnhancer.ControllerInstrumentation;
 import play.mvc.ActionInvoker;
 import play.mvc.Http;
@@ -30,8 +30,11 @@ import com.ning.http.multipart.FilePart;
 import com.ning.http.multipart.MultipartRequestEntity;
 import com.ning.http.multipart.Part;
 import com.ning.http.multipart.StringPart;
-import java.util.concurrent.Future;
+
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
+
 import play.Invoker;
 import play.mvc.Controller;
 import play.mvc.Router.ActionDefinition;
@@ -68,13 +71,19 @@ public abstract class FunctionalTest extends BaseTest {
         Response response = GET(url);
         if (Http.StatusCode.FOUND == response.status && followRedirect) {
             Http.Header redirectedTo = response.headers.get("Location");
-            java.net.URL redirectedUrl = null;
-            try {
-                redirectedUrl = new java.net.URL(redirectedTo.value());
-            } catch (MalformedURLException e) {
-                throw new RuntimeException(e);
+            String location = redirectedTo.value();
+            if(location.contains("http")){
+            	java.net.URL redirectedUrl = null;
+            	try {
+            		redirectedUrl = new java.net.URL(redirectedTo.value());
+            	} catch (MalformedURLException e) {
+            		throw new RuntimeException(e);
+            	}
+            	response = GET(redirectedUrl.getPath());
             }
-            response = GET(redirectedUrl.getPath());
+            else{
+            	response = GET(location);
+            }
         }
         return response;
     }
@@ -172,7 +181,8 @@ public abstract class FunctionalTest extends BaseTest {
         List<Part> parts = new ArrayList<Part>();
 
         for (String key : parameters.keySet()) {
-            parts.add(new StringPart(key, parameters.get(key)));
+            final StringPart stringPart = new StringPart(key, parameters.get(key), request.encoding);
+            parts.add(stringPart);
         }
 
         for (String key : files.keySet()) {
@@ -185,7 +195,7 @@ public abstract class FunctionalTest extends BaseTest {
             parts.add(filePart);
         }
 
-        MultipartRequestEntity requestEntity = new MultipartRequestEntity(parts.toArray(new Part[]{}), new FluentCaseInsensitiveStringsMap()); 
+        MultipartRequestEntity requestEntity = new MultipartRequestEntity(parts.toArray(new Part[parts.size()]), new FluentCaseInsensitiveStringsMap()); 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try {
             requestEntity.writeRequest(baos);
@@ -263,7 +273,8 @@ public abstract class FunctionalTest extends BaseTest {
     }
 
     public static void makeRequest(final Request request, final Response response) {
-        final Future invocationResult = TestEngine.functionalTestsExecutor.submit(new Invoker.Invocation() {
+        final CountDownLatch actionCompleted = new CountDownLatch(1);
+        TestEngine.functionalTestsExecutor.submit(new Invoker.Invocation() {
 
             @Override
             public void execute() throws Exception {
@@ -276,6 +287,28 @@ public abstract class FunctionalTest extends BaseTest {
             }
 
             @Override
+            public void onSuccess() throws Exception {
+                try {
+                    super.onSuccess();
+                } finally {
+                    onActionCompleted();
+                }
+            }
+
+            @Override
+            public void onException(final Throwable e) {
+                try {
+                    super.onException(e);
+                } finally {
+                    onActionCompleted();
+                }
+            }
+
+            private void onActionCompleted() {
+                actionCompleted.countDown();
+            }
+
+            @Override
             public InvocationContext getInvocationContext() {
                 ActionInvoker.resolve(request, response);
                 return new InvocationContext(Http.invocationType,
@@ -285,7 +318,9 @@ public abstract class FunctionalTest extends BaseTest {
 
         });
         try {
-            invocationResult.get(30, TimeUnit.SECONDS);
+            if (!actionCompleted.await(30, TimeUnit.SECONDS)) {
+                throw new TimeoutException("Request did not complete in time");
+            }
             if (savedCookies == null) {
                 savedCookies = new HashMap<String, Http.Cookie>();
             }

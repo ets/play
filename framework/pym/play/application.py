@@ -1,5 +1,6 @@
 import sys
-import os, os.path
+import os
+import os.path
 import re
 import shutil
 import socket
@@ -20,16 +21,25 @@ class PlayApplication(object):
 
     def __init__(self, application_path, env, ignoreMissingModules = False):
         self.path = application_path
-        if application_path is not None:
+        # only parse conf it is exists - if it should be there, it will be caught later 
+        # (depends on command)
+        confExists = os.path.exists(os.path.join(self.path, 'conf', 'application.conf')); 
+        if application_path is not None and confExists:
             confFolder = os.path.join(application_path, 'conf/')
             try:
                 self.conf = PlayConfParser(confFolder, env)
-            except:
+            except Exception as err:
+                print "~ Failed to parse application configuration", err
                 self.conf = None # No app / Invalid app
         else:
             self.conf = None
         self.play_env = env
-        self.jpda_port = self.readConf('jpda.port')
+
+        if env.has_key('jpda.port'):
+            self.jpda_port = env['jpda.port']
+        else:
+            self.jpda_port = self.readConf('jpda.port')
+
         self.ignoreMissingModules = ignoreMissingModules
 
     # ~~~~~~~~~~~~~~~~~~~~~~ Configuration File
@@ -58,6 +68,13 @@ class PlayApplication(object):
 
     def modules(self):
         modules = []
+        application_mode = self.readConf('application.mode').lower()
+        if not application_mode:
+            application_mode = "dev"
+        if application_mode == 'dev':
+            #Load docviewer module
+			modules.append(os.path.normpath(os.path.join(self.play_env["basedir"], 'modules/docviewer')))
+			
         for m in self.readConfs('module.'):
             if '${play.path}' in m:
                 m = m.replace('${play.path}', self.play_env["basedir"])
@@ -215,9 +232,30 @@ class PlayApplication(object):
             s.bind(('', int(self.jpda_port)))
             s.close()
         except socket.error, e:
-            print 'JPDA port %s is already used. Will try to use any free port for debugging' % self.jpda_port
-            self.jpda_port = 0
+            if self.play_env["disable_random_jpda"]:
+                print 'JPDA port %s is already used, and command line option "-f" was specified. Cannot start server\n' % self.jpda_port
+                sys.exit(-1)
+            else:
+                print 'JPDA port %s is already used. Will try to use any free port for debugging' % self.jpda_port
+                self.jpda_port = 0
 
+    def java_args_memory(self, java_args):
+        args_memory = []
+        memory_in_args=False    
+        for arg in java_args:
+            if arg.startswith('-Xm'):
+                memory_in_args=True
+                args_memory.append(arg)
+            
+        if not memory_in_args:
+            memory = self.readConf('jvm.memory')
+            if memory:
+                args_memory = args_memory + memory.split(' ')
+            elif 'JAVA_OPTS' in os.environ:
+                args_memory = args_memory + os.environ['JAVA_OPTS'].split(' ')
+                
+        return args_memory        
+    
     def java_cmd(self, java_args, cp_args=None, className='play.server.Server', args = None):
         if args is None:
             args = ['']
@@ -234,14 +272,26 @@ class PlayApplication(object):
         if cp_args is None:
             cp_args = self.cp_args()
 
-        self.jpda_port = self.readConf('jpda.port')
+        if self.play_env.has_key('jpda.port'):
+            self.jpda_port = self.play_env['jpda.port']
 
         application_mode = self.readConf('application.mode').lower()
+        if not application_mode:
+            print "~ Warning: no application.mode defined in you conf/application.conf. Using DEV mode."
+            application_mode = "dev"
+
 
         if application_mode == 'prod':
             java_args.append('-server')
-	# JDK 7 compat
-	java_args.append('-XX:-UseSplitVerifier')
+
+        javaVersion = getJavaVersion()
+        print "~ using java version \"%s\"" % javaVersion
+        if javaVersion.startswith("1.7"):
+            # JDK 7 compat
+            java_args.append('-XX:-UseSplitVerifier')
+        elif javaVersion.startswith("1.8"):
+            java_args.append('-noverify')
+
         java_policy = self.readConf('java.policy')
         if java_policy != '':
             policyFile = os.path.join(self.path, 'conf', java_policy)
@@ -258,8 +308,8 @@ class PlayApplication(object):
         java_args.append('-Dfile.encoding=utf-8')
         java_args.append('-XX:CompileCommand=exclude,jregex/Pretokenizer,next')
 
-        if self.readConf('application.mode').lower() == 'dev':
-            if not self.play_env["disable_check_jpda"]: self.check_jpda()
+        if application_mode == 'dev':
+            self.check_jpda()
             java_args.append('-Xdebug')
             java_args.append('-Xrunjdwp:transport=dt_socket,address=%s,server=y,suspend=n' % self.jpda_port)
             java_args.append('-Dplay.debug=yes')
@@ -270,14 +320,21 @@ class PlayApplication(object):
     # ~~~~~~~~~~~~~~~~~~~~~~ MISC
 
     def toRelative(self, path):
-        return _absoluteToRelative(path, self.path, "").replace("//", "/")
+        return _absoluteToRelative(path, self.path).replace("//", "/")
 
-def _absoluteToRelative(path, reference, dots):
-    if path.find(reference) > -1:
-        ending = path.find(reference) + len(reference)
-        return dots + path[ending:]
-    else:
-        return _absoluteToRelative(path, os.path.dirname(reference), "/.." + dots)
+def _absoluteToRelative(path, start):
+    """Return a relative version of a path"""
+    # Credit - http://pypi.python.org/pypi/BareNecessities/0.2.8
+    if not path:
+        raise ValueError("no path specified")
+    start_list = os.path.abspath(start).split(os.path.sep)
+    path_list = os.path.abspath(path).split(os.path.sep)
+    # Work out how much of the filepath is shared by start and path.
+    i = len(os.path.commonprefix([start_list, path_list]))
+    rel_list = [os.path.pardir] * (len(start_list)-i) + path_list[i:]
+    if not rel_list:
+        return os.path.curdir
+    return os.path.join(*rel_list)
 
 class PlayConfParser:
 
@@ -289,6 +346,8 @@ class PlayConfParser:
     def __init__(self, confFolder, env):
         self.id = env["id"]
         self.entries = self.readFile(confFolder, "application.conf")
+        if env.has_key('jpda.port'):
+            self.entries['jpda.port'] = env['jpda.port']
         if env.has_key('http.port'):
             self.entries['http.port'] = env['http.port']
 
@@ -333,11 +392,14 @@ class PlayConfParser:
         # process all include files
         for includeFile in includeFiles:
             # read include file
-            fromIncludeFile = self.readFile(confFolder, includeFile)
+            try:
+                fromIncludeFile = self.readFile(confFolder, self._expandValue(includeFile))
 
-            # add everything from include file 
-            for (key, value) in fromIncludeFile.items():
-                washedResult[key]=value
+                # add everything from include file 
+                for (key, value) in fromIncludeFile.items():
+                    washedResult[key]=value
+            except Exception as err:
+                print "~ Failed to load included configuration %s: %s" % (includeFile, err)
         
         return washedResult
 
@@ -361,6 +423,16 @@ class PlayConfParser:
             result.append(self.entries.get(key))
         return result
 
+    def _expandValue(self, value):
+        def expandvar(match):
+            key = match.group(1)
+            if key == 'play.id':
+                return self.id
+            else: # unkonwn
+                return '${%s}' % key
+
+        return re.sub('\${([a-z.]+)}', expandvar, value)
+        
 def hasKey(arr, elt):
     try:
         i = arr.index(elt)

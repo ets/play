@@ -27,6 +27,16 @@ def execute(**kargs):
     # if this is a module, we infer the name from the path
     application_name = app.readConf('application.name')
     vm_arguments = app.readConf('jvm.memory')
+    
+    javaVersion = getJavaVersion()
+    print "~ using java version \"%s\"" % javaVersion
+    if javaVersion.startswith("1.7"):
+        # JDK 7 compat
+        vm_arguments = vm_arguments +' -XX:-UseSplitVerifier'
+    elif javaVersion.startswith("1.8"):
+        # JDK 8 compatible
+        vm_arguments = vm_arguments +' -noverify'
+
     if application_name:
         application_name = application_name.replace("/", " ")
     else:
@@ -145,8 +155,11 @@ def execute(**kargs):
         os.rename(os.path.join(app.path, 'eclipse/connect.launch'), os.path.join(app.path, 'eclipse/Connect JPDA to %s.launch' % application_name))
         os.rename(os.path.join(app.path, 'eclipse/test.launch'), os.path.join(app.path, 'eclipse/Test %s.launch' % application_name))
         os.rename(os.path.join(app.path, 'eclipse/debug.launch'), os.path.join(app.path, 'eclipse/%s.launch' % application_name))
-
-    print "~ OK, the application is ready for eclipse"
+   
+    if is_application:
+        print "~ OK, the application \"%s\" is ready for eclipse" % application_name
+    else:
+        print "~ OK, the module \"%s\" is ready for eclipse" % application_name
     print "~ Use File/Import/General/Existing project to import %s into eclipse" % os.path.normpath(app.path)
     print "~"
     print "~ Use eclipsify again when you want to update eclipse configuration files."

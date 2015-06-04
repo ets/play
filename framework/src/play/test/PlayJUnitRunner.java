@@ -13,6 +13,8 @@ import org.junit.runners.JUnit4;
 import org.junit.runners.model.FrameworkMethod;
 import org.junit.runners.model.InitializationError;
 import org.junit.runners.model.Statement;
+import org.junit.runners.model.TestClass;
+
 import play.Invoker;
 import play.Invoker.DirectInvocation;
 import play.Play;
@@ -31,11 +33,13 @@ public class PlayJUnitRunner extends Runner implements Filterable {
             if (!Play.started) {
                 Play.init(new File("."), PlayJUnitRunner.getPlayId());
                 Play.javaPath.add(Play.getVirtualFile("test"));
-                Play.start();
+                // Assure that Play is not start (start can be called in the Play.init method)
+                if (!Play.started) {
+                    Play.start();
+                }
                 useCustomRunner = true;
-                Class classToRun = Play.classloader.loadApplicationClass(testClass.getName());
             }
-            Class classToRun = Play.classloader.loadApplicationClass(testClass.getName());
+            Class<?> classToRun = Play.classloader.loadApplicationClass(testClass.getName());
             jUnit4 = new JUnit4(classToRun);
         }
     }
@@ -52,10 +56,18 @@ public class PlayJUnitRunner extends Runner implements Filterable {
     public Description getDescription() {
         return jUnit4.getDescription();
     }
+    
+    private void initTest() {
+        TestClass testClass = jUnit4.getTestClass();
+        if(testClass != null){
+            TestEngine.initTest(testClass.getJavaClass());
+        }
+    }
 
     @Override
     public void run(final RunNotifier notifier) {
-        jUnit4.run(notifier);
+	initTest();
+	jUnit4.run(notifier);
     }
     
     @Override

@@ -17,7 +17,7 @@ import org.w3c.dom.Document;
 import play.Invoker.Suspend;
 import play.Logger;
 import play.Play;
-import play.classloading.ApplicationClasses;
+import play.classloading.ApplicationClasses.ApplicationClass;
 import play.classloading.enhancers.ContinuationEnhancer;
 import play.classloading.enhancers.ControllersEnhancer.ControllerInstrumentation;
 import play.classloading.enhancers.ControllersEnhancer.ControllerSupport;
@@ -59,8 +59,6 @@ import java.lang.reflect.Type;
 import org.apache.commons.javaflow.Continuation;
 import org.apache.commons.javaflow.bytecode.StackRecorder;
 import play.libs.F;
-
-import javax.management.RuntimeErrorException;
 
 /**
  * Application controller support: The controller receives input and initiates a response by making calls on model objects.
@@ -152,6 +150,11 @@ public class Controller implements ControllerSupport, LocalVariablesSupport {
     protected static Validation validation = null;
 
     /**
+     *
+     */
+    private static ITemplateNameResolver templateNameResolver = null;
+
+    /**
      * Return a 200 OK text/plain response
      * @param text The response content
      */
@@ -211,7 +214,8 @@ public class Controller implements ControllerSupport, LocalVariablesSupport {
     }
 
     /**
-     * Return a 200 OK application/binary response
+     * Return a 200 OK application/binary response.
+     * Content is fully loaded in memory, so it should not be used with large data.
      * @param is The stream to copy
      */
     protected static void renderBinary(InputStream is) {
@@ -230,6 +234,7 @@ public class Controller implements ControllerSupport, LocalVariablesSupport {
 
     /**
      * Return a 200 OK application/binary response with content-disposition attachment.
+     * Content is fully loaded in memory, so it should not be used with large data.
      *
      * @param is The stream to copy
      * @param name Name of file user is downloading.
@@ -251,6 +256,7 @@ public class Controller implements ControllerSupport, LocalVariablesSupport {
 
     /**
      * Return a 200 OK application/binary response with content-disposition attachment.
+     * Content is fully loaded in memory, so it should not be used with large data.
      *
      * @param is The stream to copy
      * @param name Name of file user is downloading.
@@ -273,7 +279,9 @@ public class Controller implements ControllerSupport, LocalVariablesSupport {
     }
 
     /**
-     * Return a 200 OK application/binary response with content-disposition attachment
+     * Return a 200 OK application/binary response with content-disposition attachment.
+     * Content is fully loaded in memory, so it should not be used with large data.
+     * 
      * @param is The stream to copy
      * @param name The attachment name
      * @param contentType The content type of the attachment
@@ -357,6 +365,13 @@ public class Controller implements ControllerSupport, LocalVariablesSupport {
     /**
      * Send a 400 Bad request
      */
+    protected static void badRequest(String msg) {
+        throw new BadRequest(msg);
+    }
+
+    /**
+     * Send a 400 Bad request
+     */
     protected static void badRequest() {
         throw new BadRequest();
     }
@@ -429,7 +444,7 @@ public class Controller implements ControllerSupport, LocalVariablesSupport {
     /**
      * Check that the token submitted from a form is valid.
      *
-     * @see play.templates.FastTags._authenticityToken()
+     * @see play.templates.FastTags#_authenticityToken
      */
     protected static void checkAuthenticity() {
         if(Scope.Params.current().get("authenticityToken") == null || !Scope.Params.current().get("authenticityToken").equals(Scope.Session.current().getAuthenticityToken())) {
@@ -514,7 +529,7 @@ public class Controller implements ControllerSupport, LocalVariablesSupport {
             }
             throw new RedirectToStatic(Router.reverse(Play.getVirtualFile(file)));
         } catch (NoRouteFoundException e) {
-            StackTraceElement element = PlayException.getInterestingStrackTraceElement(e);
+            StackTraceElement element = PlayException.getInterestingStackTraceElement(e);
             if (element != null) {
                 throw new NoRouteFoundException(file, Play.classes.getApplicationClass(element.getClassName()), element.getLineNumber());
             } else {
@@ -597,7 +612,7 @@ public class Controller implements ControllerSupport, LocalVariablesSupport {
                     throw new Redirect(actionDefinition.toString(), permanent);
                 }
             } catch (NoRouteFoundException e) {
-                StackTraceElement element = PlayException.getInterestingStrackTraceElement(e);
+                StackTraceElement element = PlayException.getInterestingStackTraceElement(e);
                 if (element != null) {
                     throw new NoRouteFoundException(action, newArgs, Play.classes.getApplicationClass(element.getClassName()), element.getLineNumber());
                 } else {
@@ -663,12 +678,14 @@ public class Controller implements ControllerSupport, LocalVariablesSupport {
             if (ex.isSourceAvailable()) {
                 throw ex;
             }
-            StackTraceElement element = PlayException.getInterestingStrackTraceElement(ex);
+            StackTraceElement element = PlayException.getInterestingStackTraceElement(ex);
             if (element != null) {
-                throw new TemplateNotFoundException(templateName, Play.classes.getApplicationClass(element.getClassName()), element.getLineNumber());
-            } else {
-                throw ex;
+                ApplicationClass applicationClass = Play.classes.getApplicationClass(element.getClassName());
+                if (applicationClass != null) {
+                    throw new TemplateNotFoundException(templateName, applicationClass, element.getLineNumber());
+                }
             }
+            throw ex;
         }
     }
 
@@ -711,7 +728,7 @@ public class Controller implements ControllerSupport, LocalVariablesSupport {
             }
             templateName = templateName.replace(".", "/") + "." + (format == null ? "html" : format);
         }
-        return templateName;
+        return null == templateNameResolver ? templateName : templateNameResolver.resolveTemplateName(templateName);
     }
 
     /**
@@ -883,7 +900,7 @@ public class Controller implements ControllerSupport, LocalVariablesSupport {
      * <p><b>Important:</b> The method will not resume on the line after you call this. The method will
      * be called again as if there was a new HTTP request.
      *
-     * @param tasks
+     * @param task
      */
     @Deprecated
     protected static void waitFor(Future<?> task) {
@@ -1003,7 +1020,7 @@ public class Controller implements ControllerSupport, LocalVariablesSupport {
         } else {
             throw new UnexpectedException("Lost promise for " + Http.Request.current() + "!");
         }
-        
+
         if(future.isDone()) {
             try {
                 return future.get();
@@ -1088,4 +1105,23 @@ public class Controller implements ControllerSupport, LocalVariablesSupport {
         _currentReverse.set(actionDefinition);
         return actionDefinition;
     }
+
+    /**
+     * Register a custoer template name resolver. That letter allows to override the way templates are resolved.
+     */
+    public static void registerTemplateNameResolver(ITemplateNameResolver templateNameResolver) {
+        if (null != Controller.templateNameResolver) Logger.warn("Existing tempate name resolver will be overriden!");
+        Controller.templateNameResolver = templateNameResolver;
+    }
+
+    /**
+     * This allow people that implements their own template engine to override the way template are resolved.
+     */
+    public static interface ITemplateNameResolver {
+        /**
+         * Return the template path given a template name.
+         */
+        public String resolveTemplateName(String templateName);
+    }   
+
 }
