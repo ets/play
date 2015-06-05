@@ -29,6 +29,7 @@ public class Scope {
 
     public static final String COOKIE_PREFIX = Play.configuration.getProperty("application.session.cookie", "PLAY");
     public static final boolean COOKIE_SECURE = Play.configuration.getProperty("application.session.secure", "false").toLowerCase().equals("true");
+    public static final String COOKIE_BY_HEADER_NAME = "Authentication-Token";
     public static final String COOKIE_EXPIRE = Play.configuration.getProperty("application.session.maxAge");
     public static final boolean SESSION_HTTPONLY = Play.configuration.getProperty("application.session.httpOnly", "false").toLowerCase().equals("true");
     public static final boolean SESSION_SEND_ONLY_IF_CHANGED = Play.configuration.getProperty("application.session.sendOnlyIfChanged", "false").toLowerCase().equals("true");
@@ -163,13 +164,21 @@ public class Scope {
                 Http.Cookie cookie = Http.Request.current().cookies.get(COOKIE_PREFIX + "_SESSION");
 				final int duration = Time.parseDuration(COOKIE_EXPIRE) ;
 				final long expiration = (duration * 1000l);
-
-                if (cookie != null && Play.started && cookie.value != null && !cookie.value.trim().equals("")) {
-                    String value = cookie.value;
-				 	int firstDashIndex = value.indexOf("-");
+				
+				String sessionValue = null;
+				if(Play.started){
+				    if (cookie != null && cookie.value != null && !cookie.value.trim().equals("")) {
+				        sessionValue = cookie.value;
+	                }else if(Http.Request.current().headers.containsKey(COOKIE_BY_HEADER_NAME)){
+                        sessionValue = Http.Request.current().headers.get(COOKIE_BY_HEADER_NAME).value();
+                    }
+				}
+				
+                if (sessionValue != null) {
+				 	int firstDashIndex = sessionValue.indexOf("-");
 				    if(firstDashIndex > -1) {
-                    	String sign = value.substring(0, firstDashIndex);
-                    	String data = value.substring(firstDashIndex + 1);
+                    	String sign = sessionValue.substring(0, firstDashIndex);
+                    	String data = sessionValue.substring(firstDashIndex + 1);
                     	if (CookieDataCodec.safeEquals(sign, Crypto.sign(data, Play.secretKey.getBytes()))) {
                             CookieDataCodec.decode(session.data, data);
                     	}
