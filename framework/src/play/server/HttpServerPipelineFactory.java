@@ -40,6 +40,9 @@ public class HttpServerPipelineFactory implements ChannelPipelineFactory {
             handler = handlers[i];
             try {
                 String name = getName(handler.trim());
+                if (Logger.isDebugEnabled()) {
+                    Logger.debug("Pipelining "+name);
+                }
                 instance = getInstance(handler);
                 if (instance != null) {
                     pipeline.addLast(name, instance);

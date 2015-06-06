@@ -81,7 +81,7 @@ public class ChunkedInputStream extends InputStream {
             try {
                 currentInputStream.close();
             } catch (IOException e) {
-                Logger.warn(e,"Unable to close inputstream.");
+                Logger.warn(e,"Unable to close single inputstream in ChunkedInputStream.");
             }
         currentInputStream = null;
     }    
@@ -101,7 +101,7 @@ public class ChunkedInputStream extends InputStream {
     @Override
     public int read() throws IOException {
         if (closed)
-            throw new IOException("InputStream closed");
+            throw new IOException("ChunkedInputStream closed");
         int r = -1;
         while (r == -1) {
             InputStream in = getCurrentInputStream();
@@ -178,7 +178,7 @@ public class ChunkedInputStream extends InputStream {
         if (off < 0 || len < 0 || off + len > b.length)
             throw new IllegalArgumentException();
         if (closed)
-            throw new IOException("InputStream closed");
+            throw new IOException("ChunkedInputStream closed");
         int r = -1;
         while (r == -1) {
             InputStream in = getCurrentInputStream();
@@ -217,7 +217,7 @@ public class ChunkedInputStream extends InputStream {
     @Override
     public long skip(long n) throws IOException {
         if (closed)
-            throw new IOException("InputStream closed");
+            throw new IOException("ChunkedInputStream closed");
         if (n <= 0)
             return 0;
         long s = -1;
@@ -261,7 +261,7 @@ public class ChunkedInputStream extends InputStream {
     @Override
     public int available() throws IOException {
         if (closed)
-            throw new IOException("InputStream closed");
+            throw new IOException("ChunkedInputStream closed");
         InputStream in = this.getCurrentInputStream();
         if (in == null)
             return 0;
@@ -291,7 +291,7 @@ public class ChunkedInputStream extends InputStream {
      */
     @Override
     public void mark(int readlimit) {
-        throw new RuntimeException();
+        throw new RuntimeException("Mark is not supported for ChunkedInputStream");
     }
     /**
      * Reset not supported.
@@ -302,7 +302,7 @@ public class ChunkedInputStream extends InputStream {
      */
     @Override
     public void reset() throws IOException {
-        throw new IOException("Reset not supported");
+        throw new IOException("Reset not supported for ChunkedInputStream");
     }
     /**
      * Does not support mark.
