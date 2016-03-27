@@ -59,10 +59,10 @@ public class StreamingChunkAggregator extends SimpleChannelUpstreamHandler {
             if (m.isChunked()) { // A chunked message we can process                
                 // A chunked message - remove 'Transfer-Encoding' header,
                 // initialize the cumulative buffer, and wait for incoming chunks.
-                List<String> encodings = m.getHeaders(HttpHeaders.Names.TRANSFER_ENCODING);
+                List<String> encodings = m.headers().getAll(HttpHeaders.Names.TRANSFER_ENCODING);
                 encodings.remove(HttpHeaders.Values.CHUNKED);
                 if (encodings.isEmpty()) {
-                    m.removeHeader(HttpHeaders.Names.TRANSFER_ENCODING);
+                    m.headers().remove(HttpHeaders.Names.TRANSFER_ENCODING);
                 }                
                 if(Logger.isDebugEnabled()) Logger.debug("Setup CHUNKED Message");
                 inputStream = new ChunkedInputStream();
