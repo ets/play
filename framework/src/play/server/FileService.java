@@ -7,6 +7,7 @@ import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.handler.codec.http.*;
 import org.jboss.netty.handler.stream.ChunkedFile;
 import org.jboss.netty.handler.stream.ChunkedInput;
+
 import play.Logger;
 import play.exceptions.UnexpectedException;
 import play.libs.MimeTypes;
@@ -44,38 +45,48 @@ public class FileService  {
                 if(Logger.isTraceEnabled()){
                     Logger.trace("file length " + fileLength);
                 }
-                nettyResponse.setHeader(HttpHeaders.Names.CONTENT_LENGTH, String.valueOf(fileLength));
+                nettyResponse.headers().set(HttpHeaders.Names.CONTENT_LENGTH, String.valueOf(fileLength));
             }
 
             if (response.contentType != null) {
-                nettyResponse.setHeader(CONTENT_TYPE, response.contentType);
+                nettyResponse.headers().set(CONTENT_TYPE, response.contentType);
             } else {
-                nettyResponse.setHeader(CONTENT_TYPE, (MimeTypes.getContentType(localFile.getName(), "text/plain")));
+                nettyResponse.headers().set(CONTENT_TYPE, (MimeTypes.getContentType(localFile.getName(), "text/plain")));
             }
 
-            nettyResponse.addHeader(HttpHeaders.Names.ACCEPT_RANGES, HttpHeaders.Values.BYTES);
+            nettyResponse.headers().set(HttpHeaders.Names.ACCEPT_RANGES, HttpHeaders.Values.BYTES);
 
             // Write the initial line and the header.
-            ChannelFuture writeFuture;
+            ChannelFuture writeFuture = null;
 
             // Write the content.
             if (!nettyRequest.getMethod().equals(HttpMethod.HEAD)) {
                 ChunkedInput chunkedInput = getChunckedInput(raf, MimeTypes.getContentType(localFile.getName(), "text/plain"), channel, nettyRequest, nettyResponse);
-                channel.write(nettyResponse);
-                writeFuture = channel.write(chunkedInput);
+                if (channel.isOpen()) {
+                    channel.write(nettyResponse);
+                    writeFuture = channel.write(chunkedInput);
+                }else{
+                    Logger.debug("Try to write on a closed channel[keepAlive:%s]: Remote host may have closed the connection", String.valueOf(isKeepAlive)); 
+                }
             } else {
-                writeFuture = channel.write(nettyResponse);
+                if (channel.isOpen()) {
+                    writeFuture = channel.write(nettyResponse);
+                }else{
+                    Logger.debug("Try to write on a closed channel[keepAlive:%s]: Remote host may have closed the connection", String.valueOf(isKeepAlive)); 
+                }
                 raf.close();
             }
 
-            if (!isKeepAlive) {
+            if (writeFuture != null && !isKeepAlive) {
                 writeFuture.addListener(ChannelFutureListener.CLOSE);
             }
         } catch (Throwable exx) {
             exx.printStackTrace();
             closeQuietly(raf);
             try {
-                ctx.getChannel().close();
+                if (ctx.getChannel().isOpen()) {
+                    ctx.getChannel().close();
+                }
             } catch (Throwable ex) { /* Left empty */ }
         }
     }
@@ -114,29 +125,29 @@ public class FileService  {
             initRanges();
             if (Logger.isDebugEnabled()) {
                 Logger.debug("Invoked ByteRangeServer, found byteRanges: %s (with header Range: %s)",
-                        Arrays.toString(byteRanges), request.getHeader("range"));
+                        Arrays.toString(byteRanges), request.headers().get("range"));
             }
         }
         
         public void prepareNettyResponse(HttpResponse nettyResponse) {
-            nettyResponse.addHeader("Accept-Ranges", "bytes");
+            nettyResponse.headers().add("Accept-Ranges", "bytes");
             if(unsatisfiable) {
                 nettyResponse.setStatus(HttpResponseStatus.REQUESTED_RANGE_NOT_SATISFIABLE);
-                nettyResponse.setHeader("Content-Range", "bytes " + 0 + "-" + (fileLength-1) + "/" + fileLength);
-                nettyResponse.setHeader("Content-length", 0);
+                nettyResponse.headers().set("Content-Range", "bytes " + 0 + "-" + (fileLength-1) + "/" + fileLength);
+                nettyResponse.headers().set("Content-length", 0);
             } else {
                 nettyResponse.setStatus(HttpResponseStatus.PARTIAL_CONTENT);
                 if(byteRanges.length == 1) {
                     ByteRange range = byteRanges[0];
-                    nettyResponse.setHeader("Content-Range", "bytes " + range.start + "-" + range.end + "/" + fileLength);
+                    nettyResponse.headers().set("Content-Range", "bytes " + range.start + "-" + range.end + "/" + fileLength);
                 } else {
-                    nettyResponse.setHeader("Content-type", "multipart/byteranges; boundary="+DEFAULT_SEPARATOR);
+                    nettyResponse.headers().set("Content-type", "multipart/byteranges; boundary="+DEFAULT_SEPARATOR);
                 }
                 long length = 0;
                 for(ByteRange range: byteRanges) {
                     length += range.computeTotalLengh();
                 }
-                nettyResponse.setHeader("Content-length", length);
+                nettyResponse.headers().set("Content-length", length);
             }
         }
         
@@ -183,12 +194,12 @@ public class FileService  {
         }
         
         public static boolean accepts(HttpRequest request) {
-            return request.containsHeader("range");
+            return request.headers().contains("range");
         }
         
         private void initRanges() {
             try {
-                String headerValue = request.getHeader("range").trim().substring("bytes=".length());
+                String headerValue = request.headers().get("range").trim().substring("bytes=".length());
                 String[] rangesValues = headerValue.split(",");
                 ArrayList<long[]> ranges = new ArrayList<long[]>(rangesValues.length);
                 for(int i = 0; i < rangesValues.length; i++) {
@@ -241,6 +252,7 @@ public class FileService  {
                 return new long[0][];
             long[][] sortedChunks = Arrays.copyOf(chunks, chunks.length);
             Arrays.sort(sortedChunks, new Comparator<long[]>() {
+                @Override
                 public int compare(long[] t1, long[] t2) {
                     return new Long(t1[0]).compareTo(t2[0]);
                 }
