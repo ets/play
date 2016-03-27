@@ -49,7 +49,7 @@ public class SslHttpServerPipelineFactory extends HttpServerPipelineFactory {
 
         engine.setEnableSessionCreation(true);
 
-        pipeline.addLast("ssl", new SslHandler(engine));        
+        pipeline.addLast("ssl", new SslHandler(engine));
 
         // Get all the pipeline. Give the user the opportunity to add their own
         String[] handlers = pipelineConfig.split(",");

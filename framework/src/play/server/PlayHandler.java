@@ -1142,7 +1142,6 @@ public class PlayHandler extends SimpleChannelUpstreamHandler {
 
 
     private void websocketHandshake(final ChannelHandlerContext ctx, HttpRequest req, MessageEvent messageEvent) throws Exception {
-
         Integer max = Integer.valueOf(Play.configuration.getProperty("play.netty.maxContentLength", "65345"));
 
         // Upgrade the pipeline as the handshaker needs the HttpStream

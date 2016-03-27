@@ -146,29 +146,23 @@ public class DBPlugin extends PlayPlugin {
                         ds.setAcquireRetryAttempts(Integer.parseInt(dbConfig.getProperty("db.pool.acquireRetryAttempts", "10")));
                         ds.setAcquireRetryDelay(Integer.parseInt(dbConfig.getProperty("db.pool.acquireRetryDelay", "1000")));
                         ds.setCheckoutTimeout(Integer.parseInt(dbConfig.getProperty("db.pool.timeout", "5000")));
-                        ds.setBreakAfterAcquireFailure(
-                                Boolean.parseBoolean(dbConfig.getProperty("db.pool.breakAfterAcquireFailure", "false")));
+                        ds.setBreakAfterAcquireFailure(Boolean.parseBoolean(dbConfig.getProperty("db.pool.breakAfterAcquireFailure", "false")));
                         ds.setMaxPoolSize(Integer.parseInt(dbConfig.getProperty("db.pool.maxSize", "30")));
                         ds.setMinPoolSize(Integer.parseInt(dbConfig.getProperty("db.pool.minSize", "1")));
                         ds.setInitialPoolSize(Integer.parseInt(dbConfig.getProperty("db.pool.initialSize", "1")));
-                        ds.setMaxIdleTimeExcessConnections(
-                                Integer.parseInt(dbConfig.getProperty("db.pool.maxIdleTimeExcessConnections", "0")));
+                        ds.setMaxIdleTimeExcessConnections(Integer.parseInt(dbConfig.getProperty("db.pool.maxIdleTimeExcessConnections", "0")));
                         ds.setIdleConnectionTestPeriod(Integer.parseInt(dbConfig.getProperty("db.pool.idleConnectionTestPeriod", "10")));
                         ds.setMaxIdleTime(Integer.parseInt(dbConfig.getProperty("db.pool.maxIdleTime", "0")));
-                        ds.setTestConnectionOnCheckin(
-                                Boolean.parseBoolean(dbConfig.getProperty("db.pool.testConnectionOnCheckin", "true")));
-                        ds.setTestConnectionOnCheckout(
-                                Boolean.parseBoolean(dbConfig.getProperty("db.pool.testConnectionOnCheckout", "false")));
+                        ds.setTestConnectionOnCheckin(Boolean.parseBoolean(dbConfig.getProperty("db.pool.testConnectionOnCheckin", "true")));
+                        ds.setTestConnectionOnCheckout(Boolean.parseBoolean(dbConfig.getProperty("db.pool.testConnectionOnCheckout", "false")));
                         ds.setLoginTimeout(Integer.parseInt(dbConfig.getProperty("db.pool.loginTimeout", "0")));
                         ds.setMaxAdministrativeTaskTime(Integer.parseInt(dbConfig.getProperty("db.pool.maxAdministrativeTaskTime", "0")));
                         ds.setMaxConnectionAge(Integer.parseInt(dbConfig.getProperty("db.pool.maxConnectionAge", "0")));
                         ds.setMaxStatements(Integer.parseInt(dbConfig.getProperty("db.pool.maxStatements", "0")));
                         ds.setMaxStatementsPerConnection(Integer.parseInt(dbConfig.getProperty("db.pool.maxStatementsPerConnection", "0")));
                         ds.setNumHelperThreads(Integer.parseInt(dbConfig.getProperty("db.pool.numHelperThreads", "3")));
-                        ds.setUnreturnedConnectionTimeout(
-                                Integer.parseInt(dbConfig.getProperty("db.pool.unreturnedConnectionTimeout", "0")));
-                        ds.setDebugUnreturnedConnectionStackTraces(
-                                Boolean.parseBoolean(dbConfig.getProperty("db.pool.debugUnreturnedConnectionStackTraces", "false")));
+                        ds.setUnreturnedConnectionTimeout(Integer.parseInt(dbConfig.getProperty("db.pool.unreturnedConnectionTimeout", "0")));
+                        ds.setDebugUnreturnedConnectionStackTraces(Boolean.parseBoolean(dbConfig.getProperty("db.pool.debugUnreturnedConnectionStackTraces", "false")));
 
                         if (dbConfig.getProperty("db.testquery") != null) {
                             ds.setPreferredTestQuery(dbConfig.getProperty("db.testquery"));
@@ -459,6 +453,7 @@ public class DBPlugin extends PlayPlugin {
         // in the CommonDataSource interface starting with JDK7 and this
         // annotation
         // would cause compilation errors with JDK6.
+        @Override
         public java.util.logging.Logger getParentLogger() throws SQLFeatureNotSupportedException {
             try {
                 return (java.util.logging.Logger) Driver.class.getDeclaredMethod("getParentLogger").invoke(this.driver);
@@ -495,16 +490,13 @@ public class DBPlugin extends PlayPlugin {
         }
 
         @Override
-        public void onDestroy(Connection c, String parentDataSourceIdentityToken) {
-        }
+        public void onDestroy(Connection c, String parentDataSourceIdentityToken) {}
 
         @Override
-        public void onCheckOut(Connection c, String parentDataSourceIdentityToken) {
-        }
+        public void onCheckOut(Connection c, String parentDataSourceIdentityToken) {}
 
         @Override
-        public void onCheckIn(Connection c, String parentDataSourceIdentityToken) {
-        }
+        public void onCheckIn(Connection c, String parentDataSourceIdentityToken) {}
 
         /**
          * Get the isolation level from either the isolationLevels map, or by
