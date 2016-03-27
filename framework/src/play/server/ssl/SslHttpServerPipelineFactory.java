@@ -7,12 +7,9 @@ import javax.net.ssl.SSLEngine;
 import org.jboss.netty.channel.ChannelHandler;
 import org.jboss.netty.channel.ChannelPipeline;
 import org.jboss.netty.handler.ssl.SslHandler;
-<<<<<<< HEAD
 import play.Play;
 import play.server.HttpServerPipelineFactory;
 import org.jboss.netty.channel.ChannelHandler;
-=======
->>>>>>> 1.3.4
 
 import play.Logger;
 import play.Play;
