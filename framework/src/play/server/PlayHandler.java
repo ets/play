@@ -80,6 +80,7 @@ import play.Invoker.InvocationContext;
 import play.Logger;
 import play.Play;
 import play.data.parsing.DataParser;
+import play.data.parsing.DataParsers;
 import play.data.parsing.DirectStreamingParser;
 import play.data.binding.CachedBoundActionMethodArgs;
 import play.data.validation.Validation;
